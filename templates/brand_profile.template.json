@@ -1,0 +1,9 @@
+{
+  "_說明": "cp 呢個去 ../profiles/brand.json 填你自己嘅嘢。全部 optional，唔填就用 neutral default（白字、唔自動標 keyword）。",
+  "brand": {
+    "accent1": "#00E5FF",
+    "accent2": "#FF6700",
+    "subtitle_font": "Hiragino Sans GB",
+    "emphasis_words": ["最重要", "大錯特錯", "唔好錯過"]
+  }
+}

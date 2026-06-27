@@ -1,0 +1,12 @@
+{
+  "_comment": "cp config.example.json config.json，改你想要嘅。全部有 default，唔改都跑得（zero-config）。",
+  "brand": {
+    "accent1": "#FFFFFF",
+    "accent2": "#FFFFFF",
+    "subtitle_font": "",
+    "emphasis_words": []
+  },
+  "glossary_terms": [],
+  "glossary_fixes": [],
+  "output_dir": null
+}

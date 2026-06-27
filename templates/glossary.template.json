@@ -1,0 +1,5 @@
+{
+  "_說明": "你成日講嘅英文/專名，STT（whisper）聽錯時用呢度修。cp 入 ../profiles/brand.json 嘅 glossary_terms / glossary_fixes。",
+  "glossary_terms": ["Claude", "ChatGPT", "AI agent", "prompt"],
+  "glossary_fixes": [["chat GPT", "ChatGPT"], ["claude", "Claude"], ["co pilot", "Copilot"]]
+}

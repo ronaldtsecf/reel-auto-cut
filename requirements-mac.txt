@@ -1,0 +1,3 @@
+# Apple Silicon Mac 加速（optional）。裝完 transcribe.py 自動揀 mlx（快過 faster-whisper 好多）。
+# 非 Apple Silicon 唔好裝（裝唔到）。
+mlx-whisper>=0.4.0

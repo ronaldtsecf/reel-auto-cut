@@ -1,0 +1,10 @@
+# jyut-cut 跨平台依賴（Windows / Linux / Mac 都裝得到）
+# 用法：python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+#
+# ffmpeg 唔喺度 — 要系統裝（macOS: brew install ffmpeg；Linux: apt install ffmpeg；Windows: choco install ffmpeg）
+
+faster-whisper>=1.0.0
+google-genai>=0.3.0
+
+# Apple Silicon Mac 想用 mlx 加速（快好多）：再 pip install -r requirements-mac.txt
+# 唔裝都得 — transcribe.py 自動 fallback faster-whisper。

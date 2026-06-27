@@ -1,0 +1,19 @@
+# 用戶私人資料（唔好 commit）
+profiles/*
+!profiles/.gitkeep
+config.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# work / test output
+test_clip.mp4
+*_pack/
+final_stt/
+*.wav
+*.mp4
+!examples/*.mp4
+BUILD.md
