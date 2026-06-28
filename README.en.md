@@ -1,144 +1,82 @@
-# reel-auto-cut (粵剪)
+# reel-auto-cut — Auto-editor for Cantonese talking-head reels
 
-**An auto-editor for Cantonese talking-head IG reels, driven by an AI coding agent.**
+> ⭐ Beginner-friendly｜~10 min one-time setup｜Mac / Windows / Linux
+> Drop in one raw talking-head clip; an AI agent cuts the NG / duplicate takes, cleans the subtitles, and hands you a finished package.
 
-You record yourself talking to camera (and inevitably fluff lines, repeat takes, ramble).
-reel-auto-cut transcribes the footage, keeps the last clean take of each line, cuts the NG /
-duplicate takes, and hands you a ready-to-import package: a rough cut + clean Cantonese
-subtitles + a B-roll briefing. With `--ship` it also burns the subtitles in and renders a
-finished file.
-
-It is not a chatbot with a personality. It is a editing tool that happens to speak human:
-it tells you the outcome in plain numbers (`3:24 → 1:34, dropped 7 repeat takes`), and
-everything it cut goes into `rejects_preview.mp4` so you can verify in 30 seconds.
-
-> 中文版（廣東話，default）：see [`README.md`](README.md).
+中文版（廣東話，default）：see [`README.md`](README.md).
 
 ---
 
-## Who runs this
+## 📌 What problem this solves
 
-This kit is meant to be **operated by an AI coding agent**, not by you typing commands.
-Two supported entry points:
+You read your script to camera, and every time a line doesn't come out clean you re-record it — one sentence shot three or four times, and you only want the last good take. But hunting through a full 10-plus-minute clip by hand, finding which take is good, cutting the NGs, tightening the breath pauses... is soul-crushing.
 
-- **Claude Code** (or any agent that reads files): point it at this folder. It reads
-  `INSTRUCTIONS.md`, runs the pipeline, and only stops to ask you when there's a *real*
-  decision (e.g. you said the same line two genuinely different ways).
-- **Codex / ChatGPT** (upload-repo fallback): zip this repo, upload it, and use one prompt:
-  > *"This is reel-auto-cut, a Cantonese reel auto-editor. Read INSTRUCTIONS.md and run the full
-  > pipeline on the video I'm uploading. Follow it step by step; only ask me when there's a
-  > genuine editing decision."*
+reel-auto-cut **hands that job to an AI agent**: you drop the clip on your AI assistant (Claude or Codex), and it finds every repeat, cuts the NGs, generates clean subtitles, and hands you back an edited package.
 
-You don't write the EDL or run ffmpeg by hand — the agent does. You drop in a video and
-review the result.
+**You don't need to know how to code, and you don't type commands yourself** — set it up once, then just drop clips on the AI.
 
----
+## ✨ What you get
 
-## What you need (honest list)
+- An **edited cut**: NGs, flubs, and duplicate takes all removed, leaving only your best takes.
+- A **subtitle file** (`.srt`): matching what you actually said, not the script.
+- (Optional) a **finished file with subtitles burned in**, ready to post.
+- A **"here's what I cut" preview clip**: don't trust the AI's edit? Scrub it for 30 seconds and you'll know — no blind faith required.
 
-| Requirement | Why | Notes |
-|---|---|---|
-| A terminal + this repo on disk | The agent runs scripts here | macOS / Linux / Windows |
-| **Python 3.10+** | All scripts are Python | one `venv`, see Quick start |
-| **ffmpeg** | cut / encode / extract audio | system install, NOT pip — `brew install ffmpeg` / `apt install ffmpeg` / `choco install ffmpeg` |
-| **A free Gemini key** (`GOOGLE_AI_API_KEY`) | catches repeat takes Whisper silently merges, and cleans subtitles | Google AI Studio free tier, **no credit card**. See below — this is not optional in spirit. |
-| Whisper engine | speech-to-text | auto-picked: **Apple Silicon Mac → mlx** (fast), **everything else → faster-whisper** (CPU/CUDA, cross-platform). You don't choose. |
-
-### Why the Gemini key is not really optional
-
-Whisper is the transcriber, but it has a blind spot: when you repeat a take, its language
-model tends to *smooth the repetition away* — so the duplicate take never shows up in the
-transcript, and the editor can't cut what it can't see. Gemini **listens to the audio** and
-catches those repeats. Claude / GPT have no ears here; nothing in the agent replaces this.
-
-Without a key the pipeline still runs, but **degraded**: silence-trim only, no take-dedup,
-no subtitle cleanup. The kit will say so explicitly. The free tier is enough — get the key.
-
-### Cantonese only
-
-This kit transcribes with `whisper --language yue`. It is tuned for **Cantonese**
-talking-head footage only. Mandarin / English / mixed-language footage is out of scope and
-will give poor results. (If you want another language, you'd be forking, not configuring.)
-
----
-
-## Quick start
-
-```bash
-# 1. Install Python deps into a local venv
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt    # faster-whisper + google-genai
-# Apple Silicon Mac, want the fast path? also:
-pip install -r requirements-mac.txt   # mlx-whisper (skip on non-Apple-Silicon)
-
-# 2. Install ffmpeg (system, not pip)
-brew install ffmpeg                 # macOS  (Linux: apt install ffmpeg · Windows: choco install ffmpeg)
-
-# 3. Get a free Gemini key (Google AI Studio, no card) and export it
-export GOOGLE_AI_API_KEY="your_key_here"
-
-# 4. (Optional) brand / glossary config — defaults work, zero-config
-cp config.example.json config.json   # edit accent colors, font, glossary if you want
-
-# 5. Hand the video to your agent
-#    Claude Code: open this folder, tell it to "run reel-auto-cut on my-clip.mov"
-#    Codex/ChatGPT: upload the repo + the one-line prompt above
-```
-
-Then the agent drives the pipeline. After it shows you the EDL (the cut list) and you
-confirm, the whole back half is **one command**:
-
-```bash
-bash reel_finish.sh <work_dir>          # rough cut + SRT + briefing + rejects
-bash reel_finish.sh <work_dir> --ship   # ...plus a finished file with subtitles burned in
-```
-
-`config.json` is fully optional — every field has a default, so the **first video runs with
-zero config**. Overrides you make (a glossary fix, a brand color) settle into `config.json`
-and become your defaults next time.
-
----
-
-## How it works
+## 🔄 How it works (the full flow)
 
 ```
-raw Cantonese footage
-  → transcribe          (Whisper: mlx on Apple Silicon, faster-whisper elsewhere · --language yue)
-  → pack_transcript     (lay takes out for the agent to read)
-  → verify (Gemini)     (listen to audio, surface repeat takes Whisper merged away)
-  → EDL                 (the agent picks the last clean take per line, drops NG/dupes → edl.json)
-  ──────── you confirm the EDL here ────────
-  → render rough cut    (videotoolbox on Mac, libx264 elsewhere · tighten pauses, A/V in sync)
-  → re-transcribe the cut   (subtitle timing matches the actual edited video, not the source)
-  → captions + draft SRT
-  → clean subtitles (Gemini)   (audio-first cleanup into accurate Traditional Cantonese)
-  → self-eval (Gemini) + auto-filter   (drops the model's own hallucinated findings)
-  → briefing + QC
-  → package             (rough cut + SRT + briefing + rejects_preview.mp4)
-  → --ship: burn subtitles → finished *_final.mp4
+you drop in one raw talking-head clip
+        │
+        ▼
+  ① transcribe    whisper turns your voice into word-level timecodes
+        │
+        ▼
+  ② catch repeats Gemini listens to the audio, surfacing repeat takes whisper merged away
+        │
+        ▼
+  ③ decide cuts   the AI reads it all, keeps the last clean take per line, drops the NGs
+        │
+        ▼
+  ④ one-shot pack edited cut + subtitles + B-roll briefing + "what got cut" preview
+        │
+        ▼
+  ⑤ (optional) ship  burn in subtitles + accent colors, ready to post
 ```
 
-Steps after the EDL confirmation all run from `reel_finish.sh` — one command, no babysitting.
-The whole thing is designed to converge internally and only interrupt you for a genuine
-editing call.
+Under the hood it's `whisper` (the transcriber) + `Gemini` (the AI that catches repeats by ear) + `ffmpeg` (the cutting tool). **Fully automated — you never touch any interface.**
 
----
+## 🚀 How to use it (3 steps)
 
-## Output
+1. **Set up your environment** (one-time, ~10 min) → follow [SETUP.md](SETUP.md), or just hand it to the AI and ask it to install everything for you.
+2. **Drop your clip on your AI assistant** — open Claude Code inside the `reel-auto-cut` folder (or hand the repo link to Codex / ChatGPT) and say:
+   > I have a talking-head clip at `~/Desktop/my_reel.mp4`, edit it with reel-auto-cut.
+3. The AI reads [INSTRUCTIONS.md](INSTRUCTIONS.md) and runs it. **The first run won't pester you — it uses defaults throughout**; it only stops to ask when there's a real decision (e.g. you said the same line two genuinely different ways).
 
-A `<slug>_pack/` folder containing:
+## 📋 What you need to prepare
 
-- **`*_roughcut.mp4`** — the cut, ready to import into CapCut and layer B-roll on.
-- **`*_subtitles.srt`** — clean Cantonese subtitles (cleaned if you had a Gemini key, draft if not).
-- **`*_briefing.md`** — a B-roll briefing for the cut.
-- **`rejects_preview.mp4`** — everything that got cut, so you can verify the edit in 30 seconds.
-- **`*_final.mp4`** — only with `--ship`: subtitles burned in, ready to post or fine-tune.
+**Must-have (won't run without these):**
+- A computer (Mac / Windows / Linux) + knowing how to open a "Terminal" (Mac) or "PowerShell" (Windows) — don't know how? Ask the AI to walk you through it step by step.
+- `Python` and `ffmpeg` (two free tools, for processing video and running the scripts) — SETUP shows you how, or ask the AI to install them for you.
+- A **free Gemini key** (create one at [Google AI Studio](https://aistudio.google.com/apikey) — no payment, no credit card).
 
----
+**Optional (nice to have):**
+- An Apple Silicon Mac (M1 and later) → automatically uses `mlx` acceleration, much faster; without it you run `faster-whisper`, slightly slower but works just the same.
 
-## License / use
+> 🤖 **Why is the Gemini key required?** `whisper` (the transcriber) has a blind spot: when you NG and re-record the same line, it often treats it as if you only said it once and misses the repeat. `Gemini` actually **listens to the audio** and catches all those repeat takes — this is the soul of the whole kit. Without it, this degrades into a plain silence-trimmer, of which there are plenty of free apps; not worth using this kit for that. So this key is non-negotiable (but it's free).
 
-A free, public kit. Built by generalizing one creator's personal reel-editing pipeline so
-Cantonese AI learners can run it themselves. Bring your own footage and your own free
-Gemini key.
+## 🌐 No Claude Code? ChatGPT / Codex works too
+
+Hand the whole repo (or the repo link) to Claude / ChatGPT / Codex and say:
+
+> This is a Cantonese reel auto-editor kit. Read INSTRUCTIONS.md and run it with me step by step — starting from the raw clip I'm dropping in.
+
+## ⚠️ Stated limitations
+
+- **Cantonese only** (transcription is set to `yue`). Other languages require forking, not configuring.
+- Mac runs `mlx` fastest; Windows / Linux run `faster-whisper` — without a GPU, a few-minute clip can take a few minutes to process, so be a little patient.
+
+## License
+
+[MIT](LICENSE) — use, modify, and sell it freely; just credit the source.
+
+Cantonese version: [README.md](README.md). Find it useful? Drop a star ⭐
