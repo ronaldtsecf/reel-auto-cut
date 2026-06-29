@@ -1,4 +1,4 @@
-"""jyut-cut user config loader — 讀 config.json + profiles/brand.json（runtime 沉澱）。
+"""jyut-cut user config loader — 讀 config.json（冇就用 neutral DEFAULTS）。
 
 Self-locating（KIT_ROOT = 呢個檔上兩層），唔 hardcode 任何絕對路徑。
 gen_briefing / reel_render_final import 呢度攞 brand color + emphasis words。
@@ -32,13 +32,12 @@ def _merge(base: dict, override: dict) -> None:
 
 def load() -> dict:
     cfg = json.loads(json.dumps(DEFAULTS))   # deep copy
-    # config.json（用戶設定）→ profiles/brand.json（runtime 沉澱，後者贏）
-    for src in (KIT_ROOT / "config.json", KIT_ROOT / "profiles" / "brand.json"):
-        if src.exists():
-            try:
-                _merge(cfg, json.loads(src.read_text()))
-            except Exception:
-                pass
+    src = KIT_ROOT / "config.json"           # 用戶設定（冇就用 DEFAULTS）
+    if src.exists():
+        try:
+            _merge(cfg, json.loads(src.read_text()))
+        except Exception:
+            pass
     return cfg
 
 
