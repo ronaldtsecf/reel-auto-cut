@@ -5,6 +5,8 @@
 
 faster-whisper>=1.0.0
 google-genai>=0.3.0
+numpy>=1.24
+Pillow>=10.0
 
 # Apple Silicon Mac 想用 mlx 加速（快好多）：再 pip install -r requirements-mac.txt
 # 唔裝都得 — transcribe.py 自動 fallback faster-whisper。

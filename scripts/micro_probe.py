@@ -34,12 +34,16 @@ def clip_mp3(src, start, end):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("source"); ap.add_argument("probes"); ap.add_argument("-o", "--output")
+    ap.add_argument("--transcript", help="transcript.json — timeline PNG 字標用（optional）")
     a = ap.parse_args()
     key = os.environ.get("GOOGLE_AI_API_KEY")
     if not key:
         sys.exit("GOOGLE_AI_API_KEY not set")
     client = genai.Client(api_key=key, http_options={"timeout": 300_000})
     probes = json.loads(Path(a.probes).read_text())
+    out = Path(a.output) if a.output else Path("micro_probe_out.json")
+    out_dir = out.parent
+    tv = Path(__file__).parent / "timeline_view.py"
     results = []
     for p in probes:
         c = clip_mp3(a.source, p["start"], p["end"])
@@ -60,12 +64,23 @@ def main():
         cs2 = ans.get("clip_seconds_2")
         if isinstance(cs2, (int, float)):
             ans["source_seconds_2"] = round(p["start"] + cs2, 2)
+        # 視覺核：出 timeline PNG（波形+filmstrip+字標），睇波形 valley 對照 Gemini 報秒
+        safe = "".join(ch if ch.isalnum() else "_" for ch in str(p["label"]))
+        png = out_dir / f"micro_{safe}.png"
+        cmd = [sys.executable, str(tv), str(a.source), str(p["start"]), str(p["end"]), "-o", str(png)]
+        if a.transcript:
+            cmd += ["--transcript", a.transcript]
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            ans["png"] = str(png)
+        except Exception as e:
+            ans["png_error"] = str(e)
         results.append(ans)
         c.unlink(missing_ok=True)
         print(f'[{p["label"]}] src={ans.get("source_seconds","?")}'
               f'{"/"+str(ans["source_seconds_2"]) if "source_seconds_2" in ans else ""} '
-              f'({ans.get("confidence","?")}) {str(ans.get("heard",""))[:55]}')
-    out = Path(a.output) if a.output else Path("micro_probe_out.json")
+              f'({ans.get("confidence","?")}) {str(ans.get("heard",""))[:55]}'
+              f'{" [png]" if "png" in ans else ""}')
     out.write_text(json.dumps(results, ensure_ascii=False, indent=1))
     print(f"wrote {out}")
 

@@ -100,6 +100,14 @@ edl.json 嘅 schema（睇 `scripts/render_edl.py` 開頭 docstring 有齊）：
 - `quote` / `take` 係俾人睇嘅註腳（`take: "3/3"` = 第 3 個 take，全部 3 個），方便你同用戶覆。
 - 想喺一段中間摳走一細截（例如句中途窒咗），用 `"dropped": [[3.1, 7.8]]`（source-time 子區間），render 會自動扣走。
 
+**揀唔到 cut 點？出張波形圖睇。** 撞到「連珠炮重讀、冇停頓、唔知刀切邊」嗰種位（whisper 最易聽漏），跑：
+
+```
+python "$KIT/scripts/timeline_view.py" work/my-reel/raw.mp4 <start> <end> --transcript work/my-reel/stt/transcript.json -o work/my-reel/peek.png
+```
+
+出一張圖：上面係菲林截圖、下面係**聲音波形**（靜音＝波形凹位 valley）+ 逐隻字標。睇住個凹位落刀，唔使淨靠估秒 —— 呢個係 whisper 聽漏粵語重讀時嘅第二隻眼（唔靠語言模型平滑化嘅 deterministic 信號）。
+
 寫好 `edl.json` 擺喺 `$WORK` 根。呢個係下一步嘅唯一輸入。
 
 ### Step 5 — 一命令完成（render → 字幕 → 打包）
