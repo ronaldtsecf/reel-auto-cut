@@ -16,6 +16,8 @@ EDL schema（video-use 相容 + 自家 fields）:
                  "flag": false, "note": ""}]}
 start/end 係 transcript word boundary（source-time）；pad 由 render 加。
 """
+from __future__ import annotations  # PEP 604 union annotation（X | None）→ lazy，Python 3.9 都 import 得
+
 import argparse
 import json
 import platform

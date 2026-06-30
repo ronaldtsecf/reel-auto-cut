@@ -1,6 +1,6 @@
 # reel-auto-cut — 廣東話口播片自動剪輯
 
-> ⭐ 小白友善｜裝一次約 10 分鐘｜Mac / Windows / Linux 都得
+> ⭐ 小白友善｜裝一次約 10 分鐘｜**Mac 最穩，Windows / Linux 實驗性**
 > 抌一條 raw 口播片，AI 幫你自動剪走 NG 同重複 take、執好字幕、出成品。
 
 ---
@@ -71,6 +71,7 @@ reel-auto-cut 將呢件事**交俾 AI 做**：你抌條片俾你個 AI 助手（
 ## ⚠️ 講明嘅限制
 
 - **淨支援廣東話**（聽寫設定咗 `yue`）。其他語言要自己改。
+- **目前 Mac 上驗證最齊**（開發者主力平台）。Windows / Linux 跨平台 engine + encoder 都做咗，理論行得到，但暫時未喺真機完整實測，當實驗性 —— 撞到問題歡迎開 issue。
 - Mac 行 `mlx` 最快；Windows / Linux 行 `faster-whisper`，冇 GPU 嘅話一條幾分鐘片可能要跑幾分鐘，要有啲耐性。
 
 ## License

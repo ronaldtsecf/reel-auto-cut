@@ -200,7 +200,7 @@ python scripts/transcribe.py ~/jyut-test/raw.mp4 --out-dir ~/jyut-test/stt
 - Apple Silicon Mac 有裝 mlx → `engine: mlx (...)`
 - 其他平台 → `engine: faster-whisper (large-v3, cpu/int8)`
 
-> **第一次跑會慢：** whisper 要下載 model（一個 AI 模型檔，幾百 MB），下載一次之後 cache 住（即係存喺本機，下次唔使再載），第二次就快。下載期間 terminal 好似冇郁係正常，等佢。
+> **第一次跑會慢：** whisper 要下載 model（一個 AI 模型檔，`large-v3` 約 3GB），下載一次之後 cache 住（即係存喺本機，下次唔使再載），第二次就快。**可能等幾分鐘到十幾分鐘**，下載期間 terminal 好似冇郁係正常，**唔好 Ctrl-C 砍佢**（砍咗要重新下載）。
 
 跑完見到類似 `wrote .../transcript.json — N words / N segments / Xs`，再行：
 

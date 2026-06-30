@@ -1,6 +1,6 @@
 # reel-auto-cut — Auto-editor for Cantonese talking-head reels
 
-> ⭐ Beginner-friendly｜~10 min one-time setup｜Mac / Windows / Linux
+> ⭐ Beginner-friendly｜~10 min one-time setup｜**Mac best-tested, Windows / Linux experimental**
 > Drop in one raw talking-head clip; an AI agent cuts the NG / duplicate takes, cleans the subtitles, and hands you a finished package.
 
 中文版（廣東話，default）：see [`README.md`](README.md).
@@ -73,6 +73,7 @@ Hand the whole repo (or the repo link) to Claude / ChatGPT / Codex and say:
 ## ⚠️ Stated limitations
 
 - **Cantonese only** (transcription is set to `yue`). Other languages require forking, not configuring.
+- **Best-tested on Mac** (the developer's primary platform). Windows / Linux have cross-platform engine + encoder support and should work in theory, but aren't yet fully tested on real hardware — treat them as experimental, and please open an issue if you hit problems.
 - Mac runs `mlx` fastest; Windows / Linux run `faster-whisper` — without a GPU, a few-minute clip can take a few minutes to process, so be a little patient.
 
 ## License
