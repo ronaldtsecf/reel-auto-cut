@@ -6,6 +6,27 @@
 
 ---
 
+## 🐍 裝之前：`python3` 版本太舊（macOS 好常見）
+
+**你見到咩**
+跟 SETUP 起 venv 冇報錯，但你部 Mac default `python3 --version` 顯示 `3.9.x`（或更舊），低過個 kit 要求嘅 **Python 3.10+**。個 venv 就會建咗喺舊 Python 上面。
+
+**點解會咁**
+macOS 內建嘅 `python3` 好多時仲係 3.9.6，唔會自動 update。SETUP Step 0 有叫你 `python3 --version` check，但如果跳咗嗰步、直接跑 Step 3，venv 就會建喺舊 Python。個 kit 唔會即刻 crash，但 3.9 係官方唔支援、未測試嘅版本，可能撞到難搞嘅 edge case。
+
+**點搞掂**
+1. 先 check：`python3 --version`。見到 `3.10` 或以上就冇事，可以 skip 呢條。
+2. 見到 `3.9` 或更舊 → 裝返新 Python：Mac 用 `brew install python@3.12`（之後個新版指令通常係 `python3.12`），或去 [python.org](https://www.python.org/downloads/) 下載最新版。
+3. **用個新版起 venv**（唔好用舊 `python3`）：
+   ```bash
+   python3.12 -m venv .venv       # 用你裝到嘅新版指令
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+4. 確認：activate 之後 `python --version` 顯示 3.10+ 就啱。
+
+---
+
 ## 📋 1. transcribe 行得超慢（Windows / 冇顯卡）
 
 **你見到咩**
