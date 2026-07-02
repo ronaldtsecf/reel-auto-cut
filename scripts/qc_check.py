@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""reel-cut 自動 QC（reel_finish 尾段 call）— catch 三個 recurring pain：
+"""reel-auto-cut 自動 QC（reel_finish 尾段 call）— catch 三個 recurring pain：
 ① SRT 黑洞漏句：相鄰 >2.5s gap + 尾段 coverage vs 片長（whisper 喺剪好片可黑洞成句）
-② 開頭重複 take：micro_probe 剪好片頭 7s 問第一句次數（retake-dense 開頭黑洞 multi-take，raw02/03 嗰種）
-③ 頻閃 / 黑場閃：blackdetect 掃完整版/roughcut（疊 B-roll 接位 / 暗素材 / 爆閃，learn from video-autopilot M93）
+② 開頭重複 take：micro_probe 剪好片頭 7s 問第一句次數（retake-dense 開頭黑洞 multi-take）
+③ 頻閃 / 黑場閃：blackdetect 掃完整版/roughcut（疊 B-roll 接位 / 暗素材 / 爆閃）
 
 Usage: qc_check.py <work_dir>
 Advisory only — always exit 0，唔 block reel_finish；有 flag 就 print 出嚟提我核。
@@ -34,7 +34,7 @@ def main():
     work = Path(sys.argv[1]).expanduser()
     slug = work.name
     issues = 0
-    print("═══ reel-cut 自動 QC ═══")
+    print("═══ reel-auto-cut 自動 QC ═══")
 
     final_s = None
     qcp = work / "qc.json"
@@ -100,7 +100,7 @@ def main():
     else:
         print("（開頭 probe skip：無 cut_master / GOOGLE_AI_API_KEY / micro_probe.py）")
 
-    # ── ③ 頻閃 / 黑場閃（blackdetect — 疊 B-roll 接位 / 暗素材 / 爆閃畫面，learn from video-autopilot M93）──
+    # ── ③ 頻閃 / 黑場閃（blackdetect — 疊 B-roll 接位 / 暗素材 / 爆閃畫面）──
     vid = None
     for pat in (f"{slug}_完整版.mp4", "*_完整版.mp4", f"{slug}_roughcut.mp4", "*_roughcut.mp4"):
         c = sorted(work.glob(pat))

@@ -4,15 +4,14 @@ Generate 後製 briefing.md — CapCut 後製指引。
 
 Input:
   edl.json            — rough cut duration + source slug
-  --selections <path> — B-roll 選取（library / gap modes）
+  --selections <path> — B-roll 選取（library / gap modes，optional）
   --srt <path>        — 字幕數 count（optional）
-  --identity RT|TC    — RT design system vs TC（default RT）
 
 Output: briefing.md with:
   - 素材包 table
   - B-roll placement timeline table（含 gap 標注）
   - Library gap sourcing section
-  - Effects cheat sheet（RT design system）
+  - Effects cheat sheet
   - 後製 tips
 
 Usage:
@@ -175,7 +174,7 @@ def main():
     lines = [
         f"# {title} 後製 Briefing",
         "",
-        f"> reel-cut 做晒粗重功夫，呢份係你（或剪片 TA）喺 **CapCut / 剪映** 落手後製嘅指引。",
+        f"> reel-auto-cut 做晒粗重功夫，呢份係你（或幫你剪片嘅人）喺 **CapCut / 剪映** 落手後製嘅指引。",
         f"> Rough cut 已經劈走 NG/重複 take + 收緊抖氣位（{n_ranges} 段 → {fmt_ts(speed_dur)}），乾淨緊湊。",
         f"> 你淨係要：疊 B-roll + 加字幕 + 加特效，就出得街。",
         "",
@@ -185,8 +184,8 @@ def main():
         "|---|------|------|",
         f"| 1 | `{roughcut_name}` | 主片（HEVC 50Mbps 近無損 · 1080×1920 · {fmt_ts(speed_dur)}）— import 做底 |",
         f"| 2 | `{srt_name}` | 字幕（{srt_count if srt_count else '?'} 句，timing 已對 rough cut）— import 即對位 |",
-        f"| 3 | `selected-broll/` ×{n_broll} | B-roll，**檔名 = 時間碼 + 內容描述**（睇得明邊條打邊條）|",
-        f"| 4 | `{briefing_name}` | 呢份 |",
+        *([f"| 3 | `selected-broll/` ×{n_broll} | B-roll，**檔名 = 時間碼 + 內容描述**（睇得明邊條打邊條）|"] if n_broll else []),
+        f"| {4 if n_broll else 3} | `{briefing_name}` | 呢份 |",
         "",
         "## 後製流程（3 步）",
         "",
@@ -229,21 +228,21 @@ def main():
             )
         lines.append("")
         lines.append(
-            "> 下次一條龍自動：library 揀唔到 → 上網搵真 stock（唔用 AI 生成，跟 no-AI rule）。"
+            "> 補片建議用真實片源（stock / 自己補錄），唔好用 AI 生成片 — 觀眾一眼睇得出，傷信任。"
         )
         lines.append("")
 
     if not selections:
-        lines.append("> **B-roll 待揀**：跑 `/broll-match` 後重新 generate briefing（`reel_finish.sh`）。")
+        lines.append("> **B-roll 自由發揮**：呢個 kit 唔幫你揀 B-roll。想加就喺 CapCut 疊落 overlay track（跟上面 timeline 嘅建議位，inset 細框），唔加直接出都得。")
         lines.append("")
 
-    # Effects cheat sheet (static, RT-tuned)
+    # Effects cheat sheet (static)
     lines.extend([
         "## 特效 cheat sheet（CapCut 點做）",
         "",
         "研究咗知識型口播高質做法，**top 3 最抵做**（其餘留白，唔好濫）：",
         "",
-        f"1. **Kinetic keyword highlight**（最高 ROI）— 字幕關鍵詞放大 + 變 RT 色（{accent1} / {accent2}）。CapCut：揀該詞 → 加大字號 + 改色。",
+        f"1. **Kinetic keyword highlight**（最高 ROI）— 字幕關鍵詞放大 + 變重點色（{accent1} / {accent2}，喺 config.json 較）。CapCut：揀該詞 → 加大字號 + 改色。",
         "2. **Punch-in zoom**（節奏）— 重點句畫面放大 1.25–1.3x。CapCut：scale keyframe，cut 點即跳。",
         "3. **Easing 紀律**（業餘↔專業分水嶺）— 入場用緩出（ease-out），唔好預設 linear / 乜都彈跳。",
         "",
@@ -259,7 +258,7 @@ def main():
         "- **截圖入片前過隱私**：若片有截圖/螢幕畫面，先裁走工具列/分頁/通知，掃 email / 個資 / API key（一句判斷：「呢格直接公開，我會唔會後悔？」）",
         "",
         "---",
-        f"*reel-cut + broll-match 自動生成 · {datetime.now().strftime('%Y-%m-%d')}*",
+        f"*reel-auto-cut 自動生成 · {datetime.now().strftime('%Y-%m-%d')}*",
     ])
 
     out = Path(args.output) if args.output else Path(args.edl).parent / "briefing.md"

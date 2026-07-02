@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Captions JSON → SRT（對應變速後 timing）。
 
-reel-cut 出 rough cut（剪 NG + 1.05x）後，SRT timing 要對應變速後嘅片：
+reel-auto-cut 出 rough cut（剪 NG + 變速）後，SRT timing 要對應變速後嘅片：
 每個 timestamp ÷ speed。文字 = Claude 對齊 ground-truth（修 whisper drift）後嘅 captions。
 
 Usage:
