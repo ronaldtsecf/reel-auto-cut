@@ -165,5 +165,5 @@ bash "$KIT/reel_finish.sh" work/my-reel --ship
 
 ## 雙 agent 入口
 
-- **Claude Code**：呢份 `INSTRUCTIONS.md` 你已經自動讀咗，照住跑就得。
+- **Claude Code**：`CLAUDE.md` 會自動帶你嚟呢份檔。讀完照住跑就得。
 - **Codex / ChatGPT**：用戶會跟 `README.md` 嗰句 upload prompt，叫你讀呢份 `INSTRUCTIONS.md` 同 `scripts/` 入面啲 script 先開工。如果你係 Codex 而手上未有呢份檔嘅內容，叫用戶 upload 成個 repo（或者最少 `INSTRUCTIONS.md` + `reel_finish.sh` + `scripts/`）。
