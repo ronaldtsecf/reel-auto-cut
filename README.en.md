@@ -48,7 +48,7 @@ Under the hood it's `whisper` (the transcriber) + `Gemini` (the AI that catches 
 ## 🚀 How to use it (3 steps)
 
 1. **Set up your environment** (one-time, ~10 min) → follow [SETUP.md](SETUP.md), or just hand it to the AI and ask it to install everything for you.
-2. **Drop your clip on your AI assistant** — open Claude Code inside the `reel-auto-cut` folder (or hand the repo link to Codex / ChatGPT) and say:
+2. **Drop your clip on your AI assistant** — open Claude Code inside the `reel-auto-cut` folder (or hand the repo link to OpenAI Codex) and say:
    > I have a talking-head clip at `~/Desktop/my_reel.mp4`, edit it with reel-auto-cut.
 3. The AI reads [INSTRUCTIONS.md](INSTRUCTIONS.md) and runs it. **The first run won't pester you — it uses defaults throughout**; it only stops to ask when there's a real decision (e.g. you said the same line two genuinely different ways).
 
@@ -64,11 +64,13 @@ Under the hood it's `whisper` (the transcriber) + `Gemini` (the AI that catches 
 
 > 🤖 **Why is the Gemini key required?** `whisper` (the transcriber) has a blind spot: when you NG and re-record the same line, it often treats it as if you only said it once and misses the repeat. `Gemini` actually **listens to the audio** and catches all those repeat takes — this is the soul of the whole kit. Without it, this degrades into a plain silence-trimmer, of which there are plenty of free apps; not worth using this kit for that. So this key is non-negotiable (but it's free).
 
-## 🌐 No Claude Code? ChatGPT / Codex works too
+## 🌐 No Claude Code? OpenAI Codex works too
 
-Hand the whole repo (or the repo link) to Claude / ChatGPT / Codex and say:
+Hand the whole repo (or the repo link) to Claude / OpenAI Codex and say:
 
 > This is a Cantonese reel auto-editor kit. Read INSTRUCTIONS.md and run it with me step by step — starting from the raw clip I'm dropping in.
+
+⚠️ Plain ChatGPT (web / mobile app) can't run commands on your machine, so it won't work — use the [Codex app](https://openai.com/codex) (desktop, included with ChatGPT Plus).
 
 ## ⚠️ Stated limitations
 

@@ -46,7 +46,7 @@ reel-auto-cut 將呢件事**交俾 AI 做**：你抌條片俾你個 AI 助手（
 ## 🚀 點用（三步）
 
 1. **裝環境**（一次過，約 10 分鐘）→ 睇 [SETUP.md](SETUP.md) 跟住做，或者直接掉俾 AI 叫佢幫你裝。
-2. **抌片俾你個 AI 助手** —— 喺 `reel-auto-cut` 資料夾開 Claude Code（或者將 repo 連結掉俾 Codex / ChatGPT），講一句：
+2. **抌片俾你個 AI 助手** —— 喺 `reel-auto-cut` 資料夾開 Claude Code（或者將 repo 連結掉俾 OpenAI Codex），講一句：
    > 我有條口播片喺 `~/Desktop/my_reel.mp4`，幫我用 reel-auto-cut 剪。
 3. AI 自己讀 [INSTRUCTIONS.md](INSTRUCTIONS.md) 跟住跑。**第一次唔會問你嘢，全部用預設跑**；淨係撞到真係要你揀（例如同一句你講咗兩個唔同版本）先停低問。
 
@@ -62,11 +62,13 @@ reel-auto-cut 將呢件事**交俾 AI 做**：你抌條片俾你個 AI 助手（
 
 > 🤖 **點解一定要 Gemini key？** `whisper`（聽寫工具）有個盲點：你 NG 完重講同一句，佢成日只當你講咗一次，捉唔到你重複咗。`Gemini` 識真係**聽返條 audio** 捉返晒啲重複 take —— 呢個係成個 kit 嘅靈魂。冇佢就退化成普通剪靜音，市面免費 app 一大堆，唔值得用呢個 kit。所以呢個 key 唔慳得（但係免費）。
 
-## 🌐 冇 Claude Code？用 ChatGPT / Codex 都得
+## 🌐 冇 Claude Code？用 OpenAI Codex 都得
 
-將成個 repo（或者 repo 連結）掉俾 Claude / ChatGPT / Codex，講一句：
+將成個 repo（或者 repo 連結）掉俾 Claude / OpenAI Codex，講一句：
 
 > 呢個係廣東話 reel 自動剪輯 kit，讀 INSTRUCTIONS.md，同我一步步跑 —— 由我抌條 raw 片開始。
+
+⚠️ 普通 ChatGPT 網頁 / 手機 app 執行唔到你部機嘅指令，唔得 —— 要用 [Codex app](https://openai.com/codex)（桌面版，ChatGPT Plus 已包）。
 
 ## ⚠️ 講明嘅限制
 
