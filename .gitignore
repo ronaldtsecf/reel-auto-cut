@@ -17,3 +17,6 @@ final_stt/
 *.mp4
 !examples/*.mp4
 BUILD.md
+
+# Kit 工作目錄（render 中間檔，可以好大）
+work/

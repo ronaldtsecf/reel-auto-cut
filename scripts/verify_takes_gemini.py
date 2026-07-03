@@ -49,13 +49,57 @@ PROMPT = """你會收到一段廣東話口播 raw 錄音，同埋 whisper 對佢
 規則：寧濫勿缺，懷疑係重複就報。如果成段 audio 完全冇漏網，輸出 []。只輸出 JSON array，唔好有其他文字。"""
 
 
-def to_mp3(audio: Path) -> bytes:
-    if audio.suffix.lower() == ".mp3":
+CHUNK_LIMIT = 300.0   # >5min audio 一 request Gemini 會 server-disconnect（實證）
+
+
+def to_mp3(audio: Path, start: float | None = None, end: float | None = None) -> bytes:
+    if audio.suffix.lower() == ".mp3" and start is None:
         return audio.read_bytes()
+    seg = ["-ss", str(start), "-to", str(end)] if start is not None else []
     with tempfile.NamedTemporaryFile(suffix=".mp3") as tf:
-        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(audio),
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(audio), *seg,
                         "-ac", "1", "-b:a", "64k", tf.name], check=True)
         return Path(tf.name).read_bytes()
+
+
+def duration_of(audio: Path) -> float:
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                        "-of", "default=noprint_wrappers=1:nokey=1", str(audio)],
+                       capture_output=True, text=True)
+    return float(r.stdout.strip() or 0)
+
+
+def split_point(audio: Path, mid: float) -> float:
+    """midpoint ±15s 內揾最近 silence 中點做斬位（免斬正句中間）；冇 silence 就 midpoint。"""
+    import re as _re
+    r = subprocess.run(["ffmpeg", "-i", str(audio), "-ss", str(max(0, mid - 15)),
+                        "-to", str(mid + 15), "-af", "silencedetect=noise=-30dB:d=0.4",
+                        "-f", "null", "-"], capture_output=True, text=True)
+    pairs = _re.findall(r"silence_start: ([\d.]+).*?silence_end: ([\d.]+)", r.stderr, _re.S)
+    if pairs:
+        s, e = min(pairs, key=lambda p: abs((float(p[0]) + float(p[1])) / 2 - mid))
+        return (float(s) + float(e)) / 2
+    return mid
+
+
+def ask_gemini(client, audio_b64: str, packed: str):
+    last = None
+    for model in (MODEL, FALLBACK_MODEL):
+        for attempt in (1, 2):   # transient disconnect 每 model retry 一次
+            try:
+                resp = client.models.generate_content(
+                    model=model,
+                    contents=[
+                        {"inline_data": {"mime_type": "audio/mpeg", "data": audio_b64}},
+                        f"{PROMPT}\n\n=== whisper transcript ===\n{packed}",
+                    ],
+                    config=GenerateContentConfig(response_mime_type="application/json"),
+                )
+                return json.loads(resp.text), model
+            except Exception as e:
+                last = e
+                print(f"{model} attempt {attempt} fail: {e}", file=sys.stderr)
+    raise last
 
 
 def main() -> None:
@@ -70,25 +114,27 @@ def main() -> None:
         sys.exit("GOOGLE_AI_API_KEY not set")
     client = genai.Client(api_key=api_key, http_options={"timeout": 300_000})
 
-    audio_b64 = base64.b64encode(to_mp3(Path(a.audio))).decode()
+    audio = Path(a.audio)
     packed = Path(a.packed).read_text()
+    dur = duration_of(audio)
+    if dur > CHUNK_LIMIT:
+        mid = split_point(audio, dur / 2)
+        chunks = [(0.0, mid), (mid, dur)]
+        print(f"audio {dur:.0f}s > {CHUNK_LIMIT:.0f}s → 斬 {mid:.1f}s 兩份餵（長 audio disconnect 對策）",
+              file=sys.stderr)
+    else:
+        chunks = [(None, None)]
 
-    for model in (MODEL, FALLBACK_MODEL):
-        try:
-            resp = client.models.generate_content(
-                model=model,
-                contents=[
-                    {"inline_data": {"mime_type": "audio/mpeg", "data": audio_b64}},
-                    f"{PROMPT}\n\n=== whisper transcript ===\n{packed}",
-                ],
-                config=GenerateContentConfig(response_mime_type="application/json"),
-            )
-            findings = json.loads(resp.text)
-            break
-        except Exception as e:  # quota / model unavailable → fallback
-            print(f"{model} fail: {e}", file=sys.stderr)
-            if model == FALLBACK_MODEL:
-                raise
+    findings = []
+    for c0, c1 in chunks:
+        b64 = base64.b64encode(to_mp3(audio, c0, c1)).decode()
+        fs, model = ask_gemini(client, b64, packed)
+        if c0:   # chunk 相對秒 → 全軸
+            for f in fs:
+                for k in ("approx_start", "approx_end"):
+                    if isinstance(f.get(k), (int, float)):
+                        f[k] += c0
+        findings += fs
     out = Path(a.output) if a.output else Path(a.packed).parent / "gemini_findings.json"
     out.write_text(json.dumps({"model": model, "findings": findings},
                               ensure_ascii=False, indent=1))

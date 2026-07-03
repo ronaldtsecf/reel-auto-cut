@@ -187,8 +187,20 @@ def audio_bitrate(quality: str) -> str:
 
 def extract(src: str, start: float, end: float, out: Path, enc: list[str],
             abr: str = "128k", vf_extra: str = "", label: str = "",
-            acodec: str = "pcm_s16le", amap: "str | None" = None) -> None:
+            acodec: str = "pcm_s16le", amap: "str | None" = None,
+            audio_only: bool = False) -> None:
     dur = end - start
+    if audio_only:
+        # proof render：唔郁 video（秒級 vs 分鐘級），刀位/fade 同真 render 完全一致
+        af = (f"aresample=async=1,afade=t=in:st=0:d={FADE},"
+              f"afade=t=out:st={max(0.0, dur - FADE):.3f}:d={FADE}")
+        amap_args = ["-map", amap] if amap else []
+        r = run(["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.3f}", "-i", src,
+                 "-t", f"{dur:.3f}", *amap_args, "-vn", "-af", af,
+                 "-c:a", acodec, str(out)])
+        if r.returncode != 0:
+            sys.exit(f"extract fail {out.name}:\n{r.stderr[-800:]}")
+        return
     vf = "fps=60,format=yuv420p" + ("," + vf_extra if vf_extra else "")
     if label:
         safe = label.replace(":", r"\:")
@@ -220,7 +232,8 @@ def concat(segs: list[Path], out: Path, workdir: Path) -> None:
 
 def trim_silences(src: str, out: Path, enc: list[str], abr: str, dur: float,
                   segdir: Path, floor: float = 0.12, thresh: float = 0.30,
-                  acodec: str = "pcm_s16le", amap: "str | None" = None) -> dict:
+                  acodec: str = "pcm_s16le", amap: "str | None" = None,
+                  audio_only: bool = False) -> dict:
     """Render 後 global silence-trim：detect 全片 silence ≥thresh，每個切到剩 floor。
     Catch split_on_internal_silences 漏咗嘅停頓（EDL range 邊界 / 片頭片尾 / range
     之間 concat gap）— 呢啲唔喺 range 內部，per-segment 常數 trim 唔到。
@@ -250,10 +263,15 @@ def trim_silences(src: str, out: Path, enc: list[str], abr: str, dur: float,
     for i, (ks, ke) in enumerate(keeps):
         if ke - ks < 0.05:
             continue
-        seg = segdir / f"trim_{i:03d}.mov"
-        rr = run(["ffmpeg", "-y", "-v", "error", "-ss", f"{ks:.3f}", "-i", src,
-                  "-t", f"{ke - ks:.3f}", "-vf", "fps=60,format=yuv420p",
-                  *enc, *a_args, "-shortest", str(seg)])  # video=audio 等長
+        if audio_only:
+            seg = segdir / f"trim_{i:03d}.wav"
+            rr = run(["ffmpeg", "-y", "-v", "error", "-ss", f"{ks:.3f}", "-i", src,
+                      "-t", f"{ke - ks:.3f}", "-vn", "-c:a", acodec, str(seg)])
+        else:
+            seg = segdir / f"trim_{i:03d}.mov"
+            rr = run(["ffmpeg", "-y", "-v", "error", "-ss", f"{ks:.3f}", "-i", src,
+                      "-t", f"{ke - ks:.3f}", "-vf", "fps=60,format=yuv420p",
+                      *enc, *a_args, "-shortest", str(seg)])  # video=audio 等長
         if rr.returncode != 0:
             sys.exit(f"trim seg fail:\n{rr.stderr[-600:]}")
         tsegs.append(seg)
@@ -277,6 +295,8 @@ def main() -> None:
     ap.add_argument("--encoder", choices=["videotoolbox", "libx264"], default="videotoolbox")
     ap.add_argument("--quality", choices=["preview", "rough"], default="preview",
                     help="rough = 近無損 H.265（seg 80M→final 50M）+ aac 256k 俾 CapCut 後製；preview = h264 12M")
+    ap.add_argument("--audio-only", action="store_true",
+                    help="proof render：只出 audio wav（秒級），刀位/snap/tighten/trim 同真 render 一致，俾殘留掃驗")
     a = ap.parse_args()
 
     edl_path = Path(a.edl).expanduser()
@@ -328,8 +348,9 @@ def main() -> None:
         tag = f"（內壓 {len(pieces)-1} 個抖氣位）" if len(pieces) > 1 else ""
         print(f"extract {i}/{len(edl['ranges'])}  {fmt_tc(cut_in)}→{fmt_tc(cut_out)} {tag}")
         for j, (ps, pe) in enumerate(pieces):
-            seg = segdir / f"seg_{i:03d}_{j}.mov"  # PCM audio → .mov container
-            extract(src, ps, pe, seg, seg_enc, abr=abr, amap=amap)
+            ext = "wav" if a.audio_only else "mov"  # PCM audio → .mov（video）/ .wav（proof）
+            seg = segdir / f"seg_{i:03d}_{j}.{ext}"
+            extract(src, ps, pe, seg, seg_enc, abr=abr, amap=amap, audio_only=a.audio_only)
             segs.append(seg)
         snap_log.append({"range": i, "in": [round(raw_in, 3), round(cut_in, 3)],
                          "out": [round(raw_out, 3), round(cut_out, 3)]})
@@ -337,19 +358,23 @@ def main() -> None:
                          "dur": sum(pe - ps for ps, pe in pieces),
                          "n_tighten": len(pieces) - 1})
 
-    master = workdir / "cut_master.mov"  # PCM audio（無 AAC priming 累積）→ A/V 同步
+    m_ext = "wav" if a.audio_only else "mov"
+    master = workdir / f"cut_master.{m_ext}"  # PCM audio（無 AAC priming 累積）→ A/V 同步
     concat(segs, master, workdir)
     # global silence-trim：catch split 漏嘅 EDL 邊界/片頭片尾/range 之間 停頓（v7）
     raw_mdur = ffprobe_duration(str(master))
-    master_trim = workdir / "cut_master_trim.mov"
-    trim_info = trim_silences(str(master), master_trim, seg_enc, abr, raw_mdur, segdir)
+    master_trim = workdir / f"cut_master_trim.{m_ext}"
+    trim_info = trim_silences(str(master), master_trim, seg_enc, abr, raw_mdur, segdir,
+                              audio_only=a.audio_only)
     print(f"silence-trim: 切咗 {trim_info['trimmed']} 個停頓, 慳 {trim_info['saved']}s")
     master = master_trim
     master_dur = ffprobe_duration(str(master))
 
-    # final pass：變速 + faststart
+    # final pass：變速 + faststart（audio-only：直接 copy wav，proof 唔使變速）
     final = Path(a.out).expanduser()
-    if abs(a.speed - 1.0) < 1e-6:
+    if a.audio_only:
+        r = run(["ffmpeg", "-y", "-v", "error", "-i", str(master), "-c", "copy", str(final)])
+    elif abs(a.speed - 1.0) < 1e-6:
         # master PCM .mov → video copy + audio aac + shortest 切齊（冇 silence-trim 嘅片
         # master 唔經 trim re-encode pass，video/audio 可能差 ~100ms，shortest 統一校正到 <30ms）
         r = run(["ffmpeg", "-y", "-v", "error", "-i", str(master),
@@ -366,7 +391,7 @@ def main() -> None:
 
     # rejects 串燒（complementary ranges，480p/30fps，burn source TC label）
     rejects_path = None
-    if a.rejects:
+    if a.rejects and not a.audio_only:   # proof render 唔使 rejects（真 render 先出）
         bounds = [0.0] + [t for row in cut_rows for t in (row["cut_in"], row["cut_out"])] + [src_dur]
         gaps = [(bounds[j], bounds[j + 1]) for j in range(0, len(bounds), 2)
                 if bounds[j + 1] - bounds[j] >= 0.4]

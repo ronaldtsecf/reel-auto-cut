@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""reel-auto-cut 自動 QC（reel_finish 尾段 call）— catch 三個 recurring pain：
+"""reel-auto-cut 自動 QC（reel_finish 尾段 call）— catch 四個 recurring pain：
 ① SRT 黑洞漏句：相鄰 >2.5s gap + 尾段 coverage vs 片長（whisper 喺剪好片可黑洞成句）
 ② 開頭重複 take：micro_probe 剪好片頭 7s 問第一句次數（retake-dense 開頭黑洞 multi-take）
 ③ 頻閃 / 黑場閃：blackdetect 掃完整版/roughcut（疊 B-roll 接位 / 暗素材 / 爆閃）
+④ final 殘留重複：final transcript 5/4-gram 掃（deterministic，零 API — Gemini 死機都照掃）
 
 Usage: qc_check.py <work_dir>
 Advisory only — always exit 0，唔 block reel_finish；有 flag 就 print 出嚟提我核。
@@ -67,6 +68,26 @@ def main():
     else:
         print("⚠ 搵唔到 SRT")
         issues += 1
+
+    # ── ④ final 殘留重複（5/4-gram，deterministic — 邏輯喺 repeat_scan.py 共用）──
+    ft = work / "final_stt" / "transcript.json"
+    if ft.exists():
+        try:
+            sys.path.insert(0, str(SK))
+            import repeat_scan
+            runs = repeat_scan.scan(repeat_scan.norm_text(json.load(open(ft))))
+            if runs:
+                for txt in runs:
+                    core = txt.replace("（近距4字）", "")
+                    hi = "🔴 高危" if len(core) >= 8 or txt.endswith("（近距4字）") else "留意"
+                    print(f"⚠ final 重複片段（{hi}）：「{txt}」— 疊詞/刻意 refrain 屬正常，"
+                          f"fs 殘留就要改 EDL（word-timing 核）")
+                    if hi.startswith("🔴"):
+                        issues += 1
+            else:
+                print("✓ final 零殘留重複（5/4-gram 掃）")
+        except Exception as ex:
+            print(f"（殘留掃 skip：{str(ex)[:50]}）")
 
     # ── ② 開頭重複 take（micro_probe 剪好片頭 7s）──
     cm = None

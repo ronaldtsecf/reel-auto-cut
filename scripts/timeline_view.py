@@ -60,8 +60,11 @@ def extract_frames(video: Path, start: float, end: float, n: int, dest_dir: Path
             "-vf", "scale=320:-2",
             str(out),
         ]
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        paths.append(out)
+        subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if out.exists() and out.stat().st_size > 0:
+            paths.append(out)
+        elif paths:
+            paths.append(paths[-1])   # seek 超過片尾（end > duration）→ 重用上一格，唔好崩
     return paths
 
 

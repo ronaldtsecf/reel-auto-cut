@@ -72,9 +72,16 @@ python "$KIT/scripts/verify_takes_gemini.py" work/my-reel/stt/audio.wav work/my-
 
 whisper 有個死症：佢係跟語言模型「順稿」嘅，speaker 即場重讀、結巴、講咗一半縮返轉頭嗰啲位，whisper 會偷偷幫你「執靚」—— 結果 transcript 只出一次，你淨睇文字就會剪漏。Gemini 真係用對耳聽返條 raw audio，逐段對返 transcript，捉返所有「同一句講咗多過一次」嘅位，出 `gemini_findings.json`。**Claude 自己冇耳仔聽 audio，呢步冇得用文字取代。**
 
-### Step 4 — 你出 edl.json（呢步係你嘅判斷，唔係跑命令）
+### Step 4 — 你出 edl.json（初稿由機出，判斷由你做）
 
-睇住 `takes_packed.md`（whisper 砌好嘅句）+ `gemini_findings.json`（Gemini 捉到嘅重複），你親手寫 `work/my-reel/edl.json`。EDL = edit decision list，即係「邊段留、邊段剪」嘅清單。
+**先跑自動初稿**（機械式「同句留最後一個」佢做晒，仲會標出唔穩陣嘅位俾你覆核）：
+
+```
+python "$KIT/scripts/draft_edl.py" work/my-reel/takes_packed.md \
+    --source-id main --source-path work/my-reel/raw.mp4 -o work/my-reel/draft_edl.json
+```
+
+出嚟嘅 `draft_edl.json` 已經係啱 schema 嘅 EDL，仲有 flag 欄標住「最後 take 特別短（可能唔完整）／句內自我重複／大 gap 黑洞嫌疑」呢啲要你判嘅位。你由佢出發，對住 `takes_packed.md` + `gemini_findings.json` 逐個 flag 判、執好刀位，另存做 `edl.json`。EDL = edit decision list，即係「邊段留、邊段剪」嘅清單。
 
 **揀 take 嘅鐵則：同一句講咗幾次,只留最後一個完整版本。** 人讀稿讀唔順會即刻重讀,所以正路情況下最後嗰個 take 先係 OK 嗰個。前面所有 NG / false start / 結巴 / 重複,全部唔留。
 
@@ -109,6 +116,16 @@ python "$KIT/scripts/timeline_view.py" work/my-reel/raw.mp4 <start> <end> --tran
 出一張圖：上面係菲林截圖、下面係**聲音波形**（靜音＝波形凹位 valley）+ 逐隻字標。睇住個凹位落刀，唔使淨靠估秒 —— 呢個係 whisper 聽漏粵語重讀時嘅第二隻眼（唔靠語言模型平滑化嘅 deterministic 信號）。
 
 寫好 `edl.json` 擺喺 `$WORK` 根。呢個係下一步嘅唯一輸入。
+
+### Step 4.5 — proof：先驗聲，後出片（每改一版 EDL 都跑）
+
+Render 真片一輪要 8-10 分鐘；剪聲得幾秒。所以 EDL 每一版都先用「淨聲版」驗有冇剪漏：
+
+```
+bash "$KIT/proof_check.sh" work/my-reel
+```
+
+佢會：audio-only proof render（刀位同真 render 完全一致）→ 聽寫 → 殘留掃描（同一句喺成品講咗兩次 = 有 NG 走漏）。**紅燈 → 改 edl.json 再跑 proof**（一輪 ~1 分鐘），綠燈先去 Step 5。掃描 flag 咗但你判斷係刻意嘅（排比 refrain、「背完又背」呢類疊詞）→ 將嗰句寫入 `work/my-reel/proof_allow.txt`（每行一個），re-run 就放行。
 
 ### Step 5 — 一命令完成（render → 字幕 → 打包）
 
