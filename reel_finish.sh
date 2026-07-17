@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # reel_finish.sh — 一命令完成剪輯 → 素材包（EDL 確認後跑）
 #
-# Usage: reel_finish.sh <work_dir> [--ship]
+# Usage: reel_finish.sh <work_dir> [--ship] [--broll <broll_plan.json>]
 # Requires: $WORK/edl.json（Step 3 出）+ raw video（edl sources 指向）
 # Env:
 #   GOOGLE_AI_API_KEY  字幕清潔 + self-eval（free key，唔設就 degraded）
@@ -12,10 +12,20 @@
 
 set -euo pipefail
 
-WORK=$(realpath "${1:?Usage: reel_finish.sh <work_dir> [--ship]}")
+WORK=$(realpath "${1:?Usage: reel_finish.sh <work_dir> [--ship] [--broll <plan.json>]}")
+shift
 SPEED="${REEL_SPEED:-1.0}"
 SHIP="${REEL_SHIP:-0}"
-case "${2:-}" in --ship|ship) SHIP=1 ;; esac
+BROLL_PLAN=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --ship|ship) SHIP=1; shift ;;
+        --broll)
+            [ "$#" -ge 2 ] || { echo "ERROR: --broll 後面要跟 broll_plan.json"; exit 1; }
+            BROLL_PLAN="$2"; shift 2 ;;
+        *) echo "ERROR: 唔識呢個 option: $1"; exit 1 ;;
+    esac
+done
 
 # ── Paths（self-locate，唔 hardcode）──
 KIT="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
@@ -27,6 +37,9 @@ slug=$(basename "$WORK")
 EDL="$WORK/edl.json"
 
 [ -f "$EDL" ] || { echo "ERROR: $EDL not found（先寫 edl.json，Step 3）"; exit 1; }
+[ -z "$BROLL_PLAN" ] || [ -f "$BROLL_PLAN" ] || {
+    echo "ERROR: 搵唔到 B-roll plan: $BROLL_PLAN"; exit 1;
+}
 
 echo ""
 echo "=== jyut-cut · $slug ==="
@@ -51,6 +64,16 @@ PYEOF
 echo ""; echo "Step 4 · Render rough cut..."
 "$PY" "$SK/render_edl.py" "$EDL" --out "$ROUGHCUT" --quality rough --speed "$SPEED" --rejects --tighten 0.20
 echo "   $(basename "$ROUGHCUT")"
+
+if [ -n "$BROLL_PLAN" ]; then
+    echo ""; echo "Step 4b · 疊 B-roll..."
+    BROLLCUT="${ROUGHCUT%.mp4}_broll.mp4"
+    TALKINGHEAD="${ROUGHCUT%.mp4}_talkinghead.mp4"
+    "$PY" "$SK/render_broll.py" "$ROUGHCUT" "$BROLL_PLAN" -o "$BROLLCUT"
+    mv -f "$ROUGHCUT" "$TALKINGHEAD"
+    mv -f "$BROLLCUT" "$ROUGHCUT"
+    echo "   $(basename "$ROUGHCUT")（已疊 B-roll）"
+fi
 
 PAUSE_N=$(ffmpeg -hide_banner -i "$ROUGHCUT" -af silencedetect=noise=-30dB:d=0.3 -f null - 2>&1 | grep -c silence_start || true)
 echo "   QC · >0.3s 停頓 ${PAUSE_N} 個（理想 ≤3）"

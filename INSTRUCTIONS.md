@@ -135,9 +135,15 @@ EDL 確認好,行一條命令搞掂剪片、出字幕、自驗、打包：
 bash "$KIT/reel_finish.sh" work/my-reel
 ```
 
-呢一命令後台幫你做晒：剪出 rough cut（跨平台 encoder：Mac videotoolbox / 其他 libx264）→ 對剪好嘅片再聽寫一次（字幕時間碼零錯位）→ 出字幕草稿 → Gemini audio-first 清潔字幕 → 自己再覆一次有冇剪漏、自動踢走 Gemini 嘅 hallucination → 出 briefing + QC → 打包入 `work/my-reel/my-reel_pack/`。
+呢一命令後台幫你做晒：剪出 rough cut（跨平台 encoder：Mac videotoolbox / 其他 libx264）→ 落 punch（cut-out 放大，見下面）→ 對剪好嘅片再聽寫一次（字幕時間碼零錯位）→ 出字幕草稿 → Gemini audio-first 清潔字幕 → 自己再覆一次有冇剪漏、自動踢走 Gemini 嘅 hallucination → 出 briefing + QC → 打包入 `work/my-reel/my-reel_pack/`。
 
-素材包入面有：rough cut、`*_subtitles.srt`(清潔好嘅字幕)、briefing、`rejects_preview.mp4`(你剷走嘅全部嘢)。用戶可以 import 落 CapCut 疊 B-roll、微調。
+**punch（cut-out 放大）自動落，唔使你做嘢。** render 嗰陣會喺相鄰 range 之間交替 1.0x / 放大（default `punch.zoom` = 1.15，置中偏上保住個頭），一嚟遮住剪接位嘅跳格、二嚟加節奏。**default 開**，唔使加 flag。
+
+- 想關：喺 `config.json` 設 `"punch": {"enabled": false}`（下面 Intake gate 教點 cp config），或者單獨行 render 嗰步時加 `--no-punch`。
+- 想調放大幅度：改 `config.json` 嘅 `punch.zoom`（例如 `1.1` 細力啲、`1.2` 大力啲）。
+- 只得一段（單 range）嘅片自動無效果，唔會硬放大。
+
+素材包入面有：rough cut、`*_subtitles.srt`(清潔好嘅字幕)、briefing、`rejects_preview.mp4`(你剷走嘅全部嘢)。用戶可以直接叫 AI 幫佢自動配 B-roll（下面 Step 5.5），或者自己 import 落 CapCut 手動疊、微調。
 
 **想一鍵出埋字幕燒入嘅成品**（唔使再入 CapCut）：
 
@@ -146,6 +152,45 @@ bash "$KIT/reel_finish.sh" work/my-reel --ship
 ```
 
 `--ship` 會額外出 `*_final.mp4`（字幕燒咗入畫面），直接出街得。
+
+### Step 5.5 — （可選）自動配 B-roll
+
+**B-roll 係可選：用戶有自己一個素材資料夾（自己拍嘅片段、screen record、示範片等）先做呢步；冇素材就直接跳去 Step 6，其餘功能完全不受影響。** 開工前用白話問一句：「你有冇自己嘅片段素材想我幫你自動疊上去？有就俾個資料夾我。」冇 → 跳過。
+
+B-roll 分三步：先幫素材編索引（AI 睇每條片講緊咩）→ 對住你剪好版嘅字幕揀邊條配邊句 → 疊落片。
+
+**① 編索引（index）** —— 一個素材資料夾做一次，之後有 cache 唔使再做：
+
+```
+python "$KIT/scripts/broll_index.py" /path/to/broll_dir
+```
+
+AI 會逐條素材抽幾幀睇、寫低「呢條係咩、有咩 tag、直定橫」，出 `broll_dir/broll_index.json`。同一個資料夾下次再跑會自動跳過已索引嘅檔（想強制重做加 `--force`）。**呢步要 Gemini key**（AI 睇片先做到）；冇 key 會直接停低同你講做唔到。
+
+**② 配對（match）** —— 對住 Step 5 剪好版嘅字幕，揀邊條 b-roll 放邊句：
+
+```
+python "$KIT/scripts/broll_match.py" work/my-reel --index /path/to/broll_dir/broll_index.json
+```
+
+出 `work/my-reel/broll_plan.json`（邊個時段用邊條片、點解揀佢）。呢步有幾條保護鐵則係寫死喺 code 度、唔靠 AI 自律：
+
+- b-roll 總長唔超過成條片嘅 40%（唔會成條片都係 b-roll，主角要見人）。
+- 開頭幾秒（hook）同結尾幾秒（CTA）唔落 b-roll —— 呢兩段一定要見到你自己。
+- 每段 b-roll 1.5–6 秒，兩段之間至少隔 2 秒真人畫面。
+- AI 自己都唔夠信心（confidence 低）嗰啲配對會直接剔走，寧缺勿濫。
+
+配對結果係一份計劃（plan），未落片。你可以覆一覆、覺得邊個位唔啱手改咗佢先 render。**呢步要 Gemini key**。
+
+**③ 疊落片 + 出成品** —— 用 `reel_finish.sh` 嘅 `--broll` flag 接線，b-roll 會喺剪好片之上、字幕之下疊落去（字幕永遠喺最面），加 `--ship` 就出埋燒字幕嘅 final：
+
+```
+bash "$KIT/reel_finish.sh" work/my-reel --broll work/my-reel/broll_plan.json --ship
+```
+
+出嚟嘅 `*_final.mp4` 就係剪好 + punch + B-roll + 字幕全部落埋嘅成品，直接出街。相片素材會自動加緩慢 zoom（唔會硬 hold 一張靜相），b-roll 一律靜音、聲永遠用返你把主聲。
+
+> 🤖 **冇 Gemini key 點算？** B-roll 配對係 AI 功能（要睇片、要理解你講緊咩），冇 key 做唔到 —— index 同 match 兩步會停低同你講清楚，唔會靜雞雞當冇事。但 **punch 唔使 Gemini**，冇 key 一樣照落。所以冇 key 嘅話：punch 有、B-roll 冇，建議去開個免費 key（`SETUP.md` 一分鐘）。
 
 ### Step 6 — 報俾用戶（跟上面四條 tone）
 
@@ -175,8 +220,8 @@ bash "$KIT/reel_finish.sh" work/my-reel --ship
 
 `GOOGLE_AI_API_KEY`（Google AI Studio 開,free tier,唔使綁卡 —— 裝法睇 `SETUP.md`）係呢個 kit 嘅靈魂。
 
-- **Step 3 Gemini 聽 audio 捉漏網重複** + **Step 5 字幕清潔 / 自驗**,全部靠 Gemini。Claude 冇耳仔聽 audio,捉 retake 同清廣東話字幕呢兩件事,文字模型取代唔到。
-- **冇 key = degraded 模式**：pipeline 照跑得，但會跳埋 Gemini 嗰幾步 —— 結果係淨剪靜音停頓、字幕未清潔。**呢個唔推薦**。撞到冇 key，你要明明白白同用戶講「而家係 degraded，捉重複同清字幕呢兩件靈魂嘢冇做到，建議去開個免費 key（SETUP.md 一分鐘）」，唔好靜雞雞當冇事。
+- **Step 3 Gemini 聽 audio 捉漏網重複** + **Step 5 字幕清潔 / 自驗** + **Step 5.5 B-roll 索引 / 配對**,全部靠 Gemini。Claude 冇耳仔聽 audio、冇眼睇片,捉 retake、清廣東話字幕、揀 B-roll 呢幾件事,文字模型取代唔到。
+- **冇 key = degraded 模式**：pipeline 照跑得，但會跳埋 Gemini 嗰幾步 —— 結果係淨剪靜音停頓、字幕未清潔、B-roll 配對做唔到（punch 唔使 Gemini，冇 key 一樣照落）。**呢個唔推薦**。撞到冇 key，你要明明白白同用戶講「而家係 degraded，捉重複、清字幕、配 B-roll 呢幾件靈魂嘢冇做到，建議去開個免費 key（SETUP.md 一分鐘）」，唔好靜雞雞當冇事。
 
 ---
 

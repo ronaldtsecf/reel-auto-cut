@@ -18,8 +18,10 @@ reel-auto-cut **hands that job to an AI agent**: you drop the clip on your AI as
 ## ✨ What you get
 
 - An **edited cut**: NGs, flubs, and duplicate takes all removed, leaving only your best takes.
+- **Automatic punch-ins**: select moments get a subtle zoom (a cut-out effect) that both hides the jump at each edit point and adds rhythm — no manual keyframing, on by default, and one flag turns it off if you don't want it.
+- **Automatic B-roll matching**: got your own footage (cut-aways, demo clips, screen recordings)? The AI reads what you're saying and drops the right B-roll onto the matching moments. No footage? It's skipped automatically — nothing else changes.
 - A **subtitle file** (`.srt`): matching what you actually said, not the script.
-- (Optional) a **finished file with subtitles burned in**, ready to post.
+- A **ready-to-post finished clip** (final video): subtitles burned in, punch-ins and B-roll all baked in, output as `_final.mp4` in one shot — no need to open any editing app.
 - A **"here's what I cut" preview clip**: don't trust the AI's edit? Scrub it for 30 seconds and you'll know — no blind faith required.
 
 ## 🔄 How it works (the full flow)
@@ -37,13 +39,19 @@ you drop in one raw talking-head clip
   ③ decide cuts   the AI reads it all, keeps the last clean take per line, drops the NGs
         │
         ▼
-  ④ one-shot pack edited cut + subtitles + B-roll briefing + "what got cut" preview
+  ④ cut + punch   assembles the cut, adding punch-ins (cut-out zooms) to hide edits and add rhythm
         │
         ▼
-  ⑤ (optional) ship  burn in subtitles + accent colors, ready to post
+  ⑤ (optional) B-roll  the AI reads what you're saying and overlays your footage on the matching spots
+        │
+        ▼
+  ⑥ one-shot pack edited cut + subtitles + B-roll briefing + "what got cut" preview
+        │
+        ▼
+  ⑦ (optional) ship  subtitles burned in, punch-ins + B-roll all baked in, output ready to post
 ```
 
-Under the hood it's `whisper` (the transcriber) + `Gemini` (the AI that catches repeats by ear) + `ffmpeg` (the cutting tool). **Fully automated — you never touch any interface.**
+Under the hood it's `whisper` (the transcriber) + `Gemini` (the AI that catches repeats by ear and matches B-roll) + `ffmpeg` (the cutting tool). **Fully automated — you never touch any interface.**
 
 ## 🚀 How to use it (3 steps)
 
@@ -61,6 +69,7 @@ Under the hood it's `whisper` (the transcriber) + `Gemini` (the AI that catches 
 
 **Optional (nice to have):**
 - An Apple Silicon Mac (M1 and later) → automatically uses `mlx` acceleration, much faster; without it you run `faster-whisper`, slightly slower but works just the same.
+- A folder of your own B-roll footage (clips you shot yourself, screen recordings, demo footage, etc.) → only needed if you want the AI to auto-match B-roll; skip it and everything else still runs.
 
 > 🤖 **Why is the Gemini key required?** `whisper` (the transcriber) has a blind spot: when you NG and re-record the same line, it often treats it as if you only said it once and misses the repeat. `Gemini` actually **listens to the audio** and catches all those repeat takes — this is the soul of the whole kit. Without it, this degrades into a plain silence-trimmer, of which there are plenty of free apps; not worth using this kit for that. So this key is non-negotiable (but it's free).
 

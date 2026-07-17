@@ -8,5 +8,18 @@
   },
   "glossary_terms": [],
   "glossary_fixes": [],
-  "output_dir": null
+  "output_dir": null,
+  "broll": {
+    "dir": null,
+    "max_coverage": 0.4,
+    "min_slot": 1.5,
+    "max_slot": 6.0,
+    "lead_protect": 3.0,
+    "tail_protect": 5.0,
+    "min_confidence": 0.6
+  },
+  "punch": {
+    "enabled": true,
+    "zoom": 1.15
+  }
 }

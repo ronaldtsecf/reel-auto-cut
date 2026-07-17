@@ -4,6 +4,7 @@
 Usage:
     render_edl.py <edl.json> --out <final.mp4> [--speed 1.05] [--rejects]
                   [--keep-master] [--encoder videotoolbox|libx264]
+                  [--punch | --no-punch]
 
 Phases: lint EDL → silencedetect snap edges → per-segment extract（pad +
 30ms audio fades + fps 歸一）→ concat -c copy → final pass（setpts/atempo
@@ -26,6 +27,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from kit_config import CONFIG
+
 PAD_BEFORE = 0.05      # 首字前 pad（word timestamp 慣性遲報字頭）；v7 aggressive 0.10→0.05
 PAD_AFTER = 0.08       # 尾字後 pad（粵語句尾助詞拖尾）；v7 aggressive 0.15→0.08
 CUT_IN_LEAD = 0.06     # snap 後：聲音開始前留幾多 silence；v7 aggressive 0.12→0.06
@@ -46,6 +50,24 @@ def ffprobe_duration(path: str) -> float:
     r = run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1:nokey=1", path])
     return float(r.stdout.strip())
+
+
+def ffprobe_size(path: str) -> tuple[int, int]:
+    r = run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path])
+    try:
+        width, height = r.stdout.strip().split("x")
+        return int(width), int(height)
+    except (TypeError, ValueError):
+        sys.exit(f"讀唔到片嘅解像度: {path}")
+
+
+def punch_filter(width: int, height: int, zoom: float) -> str:
+    """Crop 入去再 scale 返原尺寸；crop window 向上偏 8% 保住頭部。"""
+    crop_w = max(2, int(width / zoom) // 2 * 2)
+    crop_h = max(2, int(height / zoom) // 2 * 2)
+    return (f"crop={crop_w}:{crop_h}:x=(iw-ow)/2:y=(ih-oh)*0.42,"
+            f"scale={width}:{height}")
 
 
 def pick_audio_map(src: str) -> "str | None":
@@ -297,6 +319,11 @@ def main() -> None:
                     help="rough = 近無損 H.265（seg 80M→final 50M）+ aac 256k 俾 CapCut 後製；preview = h264 12M")
     ap.add_argument("--audio-only", action="store_true",
                     help="proof render：只出 audio wav（秒級），刀位/snap/tighten/trim 同真 render 一致，俾殘留掃驗")
+    punch_group = ap.add_mutually_exclusive_group()
+    punch_group.add_argument("--punch", dest="punch", action="store_true", default=None,
+                             help="交替 range 輕微放大（預設開）")
+    punch_group.add_argument("--no-punch", dest="punch", action="store_false",
+                             help="關閉交替放大")
     a = ap.parse_args()
 
     edl_path = Path(a.edl).expanduser()
@@ -306,6 +333,7 @@ def main() -> None:
     edl = json.loads(edl_path.read_text())
     src = list(edl["sources"].values())[0]
     src_dur = ffprobe_duration(src)
+    src_width, src_height = ffprobe_size(src)
     amap = pick_audio_map(src)  # iPhone spatial audio 多 track → 揀可 decode 嘅 aac stream
     if amap:
         print(f"audio stream: {amap}（多 audio track，已避開 spatial/unknown）")
@@ -317,6 +345,16 @@ def main() -> None:
     warnings: list[str] = []
     snap_log: list[dict] = []
     tighten_log: list[dict] = []
+    punch_cfg = CONFIG.get("punch", {})
+    punch_enabled = bool(punch_cfg.get("enabled", True)) if a.punch is None else a.punch
+    try:
+        punch_zoom = float(punch_cfg.get("zoom", 1.15))
+    except (TypeError, ValueError):
+        sys.exit("config punch.zoom 要係數字")
+    if punch_zoom < 1.0:
+        sys.exit("config punch.zoom 唔可以細過 1.0")
+    punch_active = (punch_enabled and punch_zoom > 1.0
+                    and len(edl["ranges"]) > 1 and not a.audio_only)
 
     print("detecting silences…")
     sils = detect_silences(src, amap)
@@ -347,10 +385,13 @@ def main() -> None:
                        if a.tighten > 0 else [(ks, ke)])
         tag = f"（內壓 {len(pieces)-1} 個抖氣位）" if len(pieces) > 1 else ""
         print(f"extract {i}/{len(edl['ranges'])}  {fmt_tc(cut_in)}→{fmt_tc(cut_out)} {tag}")
+        range_punch = punch_active and i % 2 == 0
+        vf_punch = punch_filter(src_width, src_height, punch_zoom) if range_punch else ""
         for j, (ps, pe) in enumerate(pieces):
             ext = "wav" if a.audio_only else "mov"  # PCM audio → .mov（video）/ .wav（proof）
             seg = segdir / f"seg_{i:03d}_{j}.{ext}"
-            extract(src, ps, pe, seg, seg_enc, abr=abr, amap=amap, audio_only=a.audio_only)
+            extract(src, ps, pe, seg, seg_enc, abr=abr, vf_extra=vf_punch,
+                    amap=amap, audio_only=a.audio_only)
             segs.append(seg)
         snap_log.append({"range": i, "in": [round(raw_in, 3), round(cut_in, 3)],
                          "out": [round(raw_out, 3), round(cut_out, 3)]})
@@ -418,6 +459,7 @@ def main() -> None:
           "master_delta_s": round(master_dur - expected_master, 2),
           "final_delta_s": round(final_dur - expected_final, 2),
           "speed": a.speed, "encoder": a.encoder,
+          "punch": punch_active, "punch_zoom": punch_zoom,
           "tighten_threshold": a.tighten,
           "tighten_saved_s": round(sum(t["saved_s"] for t in tighten_log), 2),
           "tighten_log": tighten_log,
