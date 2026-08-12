@@ -14,6 +14,8 @@ from pathlib import Path
 GAP_FLAG = 2.5
 SK = Path(__file__).resolve().parent          # self-locate，唔 hardcode
 PY = sys.executable                            # 當前 python（kit venv）
+sys.path.insert(0, str(SK.parent / "lib"))
+from gemini_key import resolve_gemini_key
 
 
 def ts(h, m, s, ms):
@@ -96,7 +98,7 @@ def main():
         if c:
             cm = c[0]
             break
-    key = os.environ.get("GOOGLE_AI_API_KEY")
+    key, _key_env = resolve_gemini_key()
     mp = SK / "micro_probe.py"
     if cm and key and mp.exists():
         probe = [{"label": "開頭重複", "start": 0.0, "end": 7.0,
@@ -119,7 +121,7 @@ def main():
         except Exception as ex:
             print(f"（開頭 probe skip：{str(ex)[:50]}）")
     else:
-        print("（開頭 probe skip：無 cut_master / GOOGLE_AI_API_KEY / micro_probe.py）")
+        print("（開頭 probe skip：無 cut_master / Gemini API key / micro_probe.py）")
 
     # ── ③ 頻閃 / 黑場閃（blackdetect — 疊 B-roll 接位 / 暗素材 / 爆閃畫面）──
     vid = None

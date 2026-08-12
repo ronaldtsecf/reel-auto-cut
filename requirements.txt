@@ -1,7 +1,7 @@
 # jyut-cut 跨平台依賴（Windows / Linux / Mac 都裝得到）
 # 用法：python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
 #
-# ffmpeg 唔喺度 — 要系統裝（macOS: brew install ffmpeg；Linux: apt install ffmpeg；Windows: choco install ffmpeg）
+# ffmpeg 唔喺度 — 要系統裝（macOS: brew install ffmpeg-full；Linux: apt install ffmpeg；Windows: choco install ffmpeg）
 
 faster-whisper>=1.0.0
 google-genai>=0.3.0

@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
-"""reel_render_final.py — Phase 2: 素材包 → 字幕燒入成品。
+"""字幕燒入＋可選 B-roll，輸出固定 1080×1920／60fps／BT.709。
 
-reel_finish.sh --ship 調用，或單獨跑。固化 RT66（2026-06-26）手砌嘅 video build：
-  讀 WORK: *_roughcut.mp4 + *_subtitles.srt + selections.json（library slots）+ script.md（glossary）
-  → SRT 轉 ASS（RT style + keyword 自動標色 heuristic）
-  → ffmpeg: library B-roll cutaway 疊 + 字幕燒入
-  → <stem>_完整版.mp4
+reel_finish.sh --ship 調用，或單獨跑：
+  讀 WORK: *_roughcut.mp4 + *_subtitles.srt + optional selections.json/script.md
+  → SRT 轉 ASS（neutral style + optional keyword highlight）
+  → ffmpeg: optional selected-broll cutaway + 字幕燒入
+  → <stem>_final.mp4 + <stem>_final_qc.json
 
 Keyword heuristic（每句最多 1 個，避免濫）：① 強調詞 orange ② glossary 專名 cyan ③ 數字 cyan。
 B-roll：只疊 selected-broll/ 已 copy 嘅 library slot（gap slot 留俾人手 / CapCut）。
 
-Usage: reel_render_final.py <work_dir> [RT|TC]
+Usage: reel_render_final.py <work_dir>
 """
 import sys
+import argparse
 import re
 import json
 import platform
 import subprocess
+from fractions import Fraction
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
@@ -45,10 +47,10 @@ def _platform_font() -> str:
     """各平台預設中文 font（廣東話字幕要中文 font，唔可以用 Arial）。"""
     s = platform.system()
     if s == "Darwin":
-        return "Hiragino Sans GB"
+        return "PingFang TC"
     if s == "Windows":
-        return "Microsoft YaHei"
-    return "Noto Sans CJK SC"
+        return "Microsoft JhengHei"
+    return "Noto Sans CJK TC"
 
 
 FONT = CONFIG["brand"].get("subtitle_font") or _platform_font()
@@ -134,7 +136,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{FONT},72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0.5,0,1,5,3,2,90,90,320,1
+Style: Default,{FONT},75,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0.5,0,1,5,3,2,90,90,320,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -143,18 +145,65 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return len(ev), n_kw
 
 
+def probe_final(path: Path) -> dict:
+    result = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-show_entries",
+            "format=duration,size:stream=codec_type,width,height,avg_frame_rate,"
+            "pix_fmt,color_space,color_transfer,color_primaries",
+            "-of", "json", str(path),
+        ],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"ffprobe 讀唔到成品：{result.stderr[-300:]}")
+    payload = json.loads(result.stdout or "{}")
+    video = next(s for s in payload.get("streams", []) if s.get("codec_type") == "video")
+    fps = float(Fraction(str(video.get("avg_frame_rate", "0/1"))))
+    return {
+        "width": int(video.get("width", 0)),
+        "height": int(video.get("height", 0)),
+        "fps": fps,
+        "pix_fmt": video.get("pix_fmt"),
+        "color_space": video.get("color_space"),
+        "color_transfer": video.get("color_transfer"),
+        "color_primaries": video.get("color_primaries"),
+        "audio_streams": sum(s.get("codec_type") == "audio" for s in payload.get("streams", [])),
+        "duration_s": float(payload.get("format", {}).get("duration", 0)),
+        "size_bytes": int(payload.get("format", {}).get("size", 0)),
+    }
+
+
+def validate_final(metadata: dict) -> list[str]:
+    failures = []
+    if (metadata["width"], metadata["height"]) != (1080, 1920):
+        failures.append(f"size={metadata['width']}x{metadata['height']}")
+    if abs(float(metadata["fps"]) - 60.0) > 0.01:
+        failures.append(f"fps={metadata['fps']}")
+    if metadata.get("pix_fmt") != "yuv420p":
+        failures.append(f"pix_fmt={metadata.get('pix_fmt')}")
+    for field in ("color_space", "color_transfer", "color_primaries"):
+        if metadata.get(field) != "bt709":
+            failures.append(f"{field}={metadata.get(field)}")
+    if metadata.get("audio_streams") != 1:
+        failures.append(f"audio_streams={metadata.get('audio_streams')}")
+    return failures
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: reel_render_final.py <work_dir>")
-        sys.exit(1)
-    work = Path(sys.argv[1]).resolve()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("work_dir", type=Path)
+    parser.add_argument("--roughcut", type=Path, help="指定今次 rough cut，避免誤揀舊檔")
+    parser.add_argument("--srt", type=Path, help="指定今次字幕，避免誤揀舊檔")
+    args = parser.parse_args()
+    work = args.work_dir.resolve()
     slug = work.name
 
-    roughcut = next(iter(work.glob("*_roughcut.mp4")), None)
-    if not roughcut:
+    roughcut = args.roughcut.resolve() if args.roughcut else next(iter(sorted(work.glob("*_roughcut.mp4"))), None)
+    if not roughcut or not roughcut.is_file():
         print("ERROR: 冇 *_roughcut.mp4 — 先跑 reel_finish")
         sys.exit(1)
-    srt = work / f"{slug}_subtitles.srt"
+    srt = args.srt.resolve() if args.srt else work / f"{slug}_subtitles.srt"
     if not srt.exists():
         srt = next(iter(work.glob("*_subtitles.srt")), None)
     if not srt or not srt.exists():
@@ -173,7 +222,7 @@ def main():
     n_ev, n_kw = srt_to_ass(parse_srt(srt), glossary, ass_path)
     print(f"ASS: {n_ev} 句, {n_kw} 個 keyword highlight")
 
-    # 2. library B-roll slots（selected-broll/ 已 copy）→ cutaway overlay
+    # 2. Optional local B-roll slots（selected-broll/）→ cutaway overlay
     broll_dir = work / "selected-broll"
     lib_slots = []
     if broll_dir.exists():
@@ -182,12 +231,15 @@ def main():
                 f = next(iter(broll_dir.glob(f"{s['slot_num']:03d}_*")), None)
                 if f:
                     lib_slots.append((f, mmss_to_sec(s["timestamp"])))
-    print(f"B-roll cutaway: {len(lib_slots)} 個 library slot（gap slot 留 CapCut）")
+    print(f"B-roll cutaway: {len(lib_slots)} 個")
 
     # 3. ffmpeg filter_complex（cwd=work，ass 用相對 path 避開冒號跳脫）
-    inputs = ["-i", roughcut.name]
-    filters = []
-    last = "0:v"
+    inputs = ["-i", str(roughcut)]
+    filters = [
+        "[0:v]fps=60,scale=1080:1920:force_original_aspect_ratio=increase,"
+        "crop=1080:1920,format=yuv420p[base]"
+    ]
+    last = "base"
     for i, (f, start) in enumerate(lib_slots):
         inputs += ["-i", str(f)]
         end = start + 3.0
@@ -198,22 +250,48 @@ def main():
         )
         filters.append(f"[{last}][bl{i}]overlay=enable='between(t,{start},{end})':eof_action=pass[ov{i}]")
         last = f"ov{i}"
-    filters.append(f"[{last}]subtitles=_final.ass[v]")
+    filters.append(
+        f"[{last}]subtitles=_final.ass,"
+        "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,"
+        "format=yuv420p[v]"
+    )
     filter_complex = ";".join(filters)
 
     stem = re.sub(r"_roughcut$", "", roughcut.stem)
     out = work / f"{stem}_final.mp4"
+    qc_path = work / f"{stem}_final_qc.json"
+    out.unlink(missing_ok=True)
+    qc_path.unlink(missing_ok=True)
     cmd = ["ffmpeg", "-y", "-v", "error", *inputs,
            "-filter_complex", filter_complex,
            "-map", "[v]", "-map", "0:a",
            *pick_vcodec(),
-           "-c:a", "aac", "-b:a", "192k", out.name]
+           "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+           "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", out.name]
     print(f"render → {out.name} ...")
     r = subprocess.run(cmd, cwd=str(work), capture_output=True, text=True)
     if r.returncode != 0:
+        out.unlink(missing_ok=True)
         print(f"ERROR ffmpeg:\n{r.stderr[-800:]}")
         sys.exit(1)
+    try:
+        metadata = probe_final(out)
+        failures = validate_final(metadata)
+    except (ValueError, json.JSONDecodeError, StopIteration, TypeError, ZeroDivisionError) as exc:
+        out.unlink(missing_ok=True)
+        print(f"ERROR 成品驗證失敗：{exc}")
+        sys.exit(2)
+    if failures:
+        out.unlink(missing_ok=True)
+        print("ERROR 成品規格唔合格：" + "；".join(failures))
+        sys.exit(2)
+    qc_path.write_text(json.dumps({
+        "status": "pass",
+        "required": {"width": 1080, "height": 1920, "fps": 60, "color": "bt709"},
+        "actual": metadata,
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"done: {out.name}")
+    print(f"QC PASS: {qc_path.name}")
     print(str(out))
 
 

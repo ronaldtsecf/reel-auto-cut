@@ -3,12 +3,15 @@
 
 Usage: micro_probe.py <source_video> <probes.json> [-o out.json]
 probes.json: [{"label":..., "start":..., "end":..., "question":...}, ...]
-source 秒 = clip start + clip_seconds。需要 GOOGLE_AI_API_KEY。
+source 秒 = clip start + clip_seconds。需要 GEMINI_API_KEY 或 GOOGLE_API_KEY。
 """
 import argparse, base64, json, os, subprocess, sys, tempfile
 from pathlib import Path
 from google import genai
 from google.genai.types import GenerateContentConfig
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from gemini_key import resolve_gemini_key
 
 MODEL = "gemini-2.5-pro"
 
@@ -36,9 +39,9 @@ def main():
     ap.add_argument("source"); ap.add_argument("probes"); ap.add_argument("-o", "--output")
     ap.add_argument("--transcript", help="transcript.json — timeline PNG 字標用（optional）")
     a = ap.parse_args()
-    key = os.environ.get("GOOGLE_AI_API_KEY")
+    key, _key_env = resolve_gemini_key()
     if not key:
-        sys.exit("GOOGLE_AI_API_KEY not set")
+        sys.exit("GEMINI_API_KEY / GOOGLE_API_KEY not set")
     client = genai.Client(api_key=key, http_options={"timeout": 300_000})
     probes = json.loads(Path(a.probes).read_text())
     out = Path(a.output) if a.output else Path("micro_probe_out.json")

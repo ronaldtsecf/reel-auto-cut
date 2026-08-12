@@ -37,7 +37,7 @@
 - `$WORK` = 你開嘅工作資料夾（一條片一個，例如 `work/my-reel/`）。raw 片放入面，所有中間產物同成品都喺度。
 - `$PY` = kit 嘅 Python。`SETUP.md` 行完 venv 之後就係 `$KIT/.venv/bin/python`（Mac/Linux）。下面用 `python` 代表，你跑時換成實際路徑。
 
-開工前確認：`SETUP.md` 行完（ffmpeg 裝咗、venv 裝咗、`GOOGLE_AI_API_KEY` set 咗）。冇 Gemini key 會 degraded —— 見最後「Gemini 唔可以 skip」。
+開工前先跑 `python "$KIT/scripts/preflight.py"`，再確認 `SETUP.md` 行完（ffmpeg、venv、`GEMINI_API_KEY` 或 `GOOGLE_API_KEY`）。冇 Gemini key 會 degraded —— 見最後「Gemini 唔可以 skip」。
 
 ### Step 0 — 開工作資料夾，擺 raw 片
 
@@ -125,7 +125,7 @@ Render 真片一輪要 8-10 分鐘；剪聲得幾秒。所以 EDL 每一版都�
 bash "$KIT/proof_check.sh" work/my-reel
 ```
 
-佢會：audio-only proof render（刀位同真 render 完全一致）→ 聽寫 → 殘留掃描（同一句喺成品講咗兩次 = 有 NG 走漏）。**紅燈 → 改 edl.json 再跑 proof**（一輪 ~1 分鐘），綠燈先去 Step 5。掃描 flag 咗但你判斷係刻意嘅（排比 refrain、「背完又背」呢類疊詞）→ 將嗰句寫入 `work/my-reel/proof_allow.txt`（每行一個），re-run 就放行。
+佢會：audio-only proof render（刀位同真 render 完全一致）→ 聽寫 → 殘留掃描（同一句喺成品講咗兩次 = 有 NG 走漏）→ 寫 `proof_pass.json`，綁死 exact EDL、原片、proof audio 同 proof 聽寫。**紅燈 → 改 edl.json 再跑 proof**（一輪 ~1 分鐘）；EDL 或原片改過，舊綠燈會自動失效。掃描 flag 咗但你判斷係刻意嘅（排比 refrain、「背完又背」呢類疊詞）→ 將嗰句寫入 `work/my-reel/proof_allow.txt`（每行一個），re-run 就放行。
 
 ### Step 5 — 一命令完成（render → 字幕 → 打包）
 
@@ -135,7 +135,7 @@ EDL 確認好,行一條命令搞掂剪片、出字幕、自驗、打包：
 bash "$KIT/reel_finish.sh" work/my-reel
 ```
 
-呢一命令後台幫你做晒：剪出 rough cut（跨平台 encoder：Mac videotoolbox / 其他 libx264）→ 落 punch（cut-out 放大，見下面）→ 對剪好嘅片再聽寫一次（字幕時間碼零錯位）→ 出字幕草稿 → Gemini audio-first 清潔字幕 → 自己再覆一次有冇剪漏、自動踢走 Gemini 嘅 hallucination → 出 briefing + QC → 打包入 `work/my-reel/my-reel_pack/`。
+呢一命令會先對 `proof_pass.json`；match 先剪 rough cut。iPhone HLG／PQ HDR 會恰好一次轉 BT.709，SDR 唔轉；每段 30ms audio fade 防 click。刀位只跟 EDL + pad，silencedetect 只報告、唔會靜靜食低聲句尾。跟住落 punch（cut-out 放大，見下面）→ 再聽寫剪好嘅片 → 出字幕草稿 → Gemini audio-first 清潔 → 覆剪漏 → briefing + QC → 打包入 `work/my-reel/my-reel_pack/`。
 
 **punch（cut-out 放大）自動落，唔使你做嘢。** render 嗰陣會喺相鄰 range 之間交替 1.0x / 放大（default `punch.zoom` = 1.15，置中偏上保住個頭），一嚟遮住剪接位嘅跳格、二嚟加節奏。**default 開**，唔使加 flag。
 
@@ -151,7 +151,7 @@ bash "$KIT/reel_finish.sh" work/my-reel
 bash "$KIT/reel_finish.sh" work/my-reel --ship
 ```
 
-`--ship` 會額外出 `*_final.mp4`（字幕燒咗入畫面），直接出街得。
+`--ship` 會額外出 `*_final.mp4`（字幕燒咗入畫面）同 `*_final_qc.json`；只有 1080×1920／60fps／8-bit BT.709／單一 audio stream 全部 match 先 PASS。機械 PASS 後仍要用手機睇一次成品同掃一次 `rejects_preview.mp4`，先好出街。
 
 ### Step 5.5 — （可選）自動配 B-roll
 
@@ -188,9 +188,9 @@ python "$KIT/scripts/broll_match.py" work/my-reel --index /path/to/broll_dir/bro
 bash "$KIT/reel_finish.sh" work/my-reel --broll work/my-reel/broll_plan.json --ship
 ```
 
-出嚟嘅 `*_final.mp4` 就係剪好 + punch + B-roll + 字幕全部落埋嘅成品，直接出街。相片素材會自動加緩慢 zoom（唔會硬 hold 一張靜相），b-roll 一律靜音、聲永遠用返你把主聲。
+出嚟嘅 `*_final.mp4` 就係剪好 + punch + B-roll + 字幕全部落埋嘅成品；技術 QC 過後仍要完整睇一次先出街。相片素材會自動加緩慢 zoom（唔會硬 hold 一張靜相），b-roll 一律靜音、聲永遠用返你把主聲。
 
-> 🤖 **冇 Gemini key 點算？** B-roll 配對係 AI 功能（要睇片、要理解你講緊咩），冇 key 做唔到 —— index 同 match 兩步會停低同你講清楚，唔會靜雞雞當冇事。但 **punch 唔使 Gemini**，冇 key 一樣照落。所以冇 key 嘅話：punch 有、B-roll 冇，建議去開個免費 key（`SETUP.md` 一分鐘）。
+> 🤖 **冇 Gemini key 點算？** B-roll 配對係 AI 功能（要睇片、要理解你講緊咩），冇 key 做唔到 —— index 同 match 兩步會停低同你講清楚，唔會靜雞雞當冇事。但 **punch 唔使 Gemini**，冇 key一樣照落。建議跟 `SETUP.md` 開 API key；部分 model 有有限額 Free Tier。
 
 ### Step 6 — 報俾用戶（跟上面四條 tone）
 
@@ -218,10 +218,10 @@ bash "$KIT/reel_finish.sh" work/my-reel --broll work/my-reel/broll_plan.json --s
 
 ## Gemini 唔可以 skip
 
-`GOOGLE_AI_API_KEY`（Google AI Studio 開,free tier,唔使綁卡 —— 裝法睇 `SETUP.md`）係呢個 kit 嘅靈魂。
+`GEMINI_API_KEY` 或 `GOOGLE_API_KEY`（Google AI Studio 開；部分 model 有有限額 Free Tier，實際條件睇 `SETUP.md`）係呢個 kit 嘅靈魂。舊安裝嘅 `GOOGLE_AI_API_KEY` 暫時仍兼容。
 
-- **Step 3 Gemini 聽 audio 捉漏網重複** + **Step 5 字幕清潔 / 自驗** + **Step 5.5 B-roll 索引 / 配對**,全部靠 Gemini。Claude 冇耳仔聽 audio、冇眼睇片,捉 retake、清廣東話字幕、揀 B-roll 呢幾件事,文字模型取代唔到。
-- **冇 key = degraded 模式**：pipeline 照跑得，但會跳埋 Gemini 嗰幾步 —— 結果係淨剪靜音停頓、字幕未清潔、B-roll 配對做唔到（punch 唔使 Gemini，冇 key 一樣照落）。**呢個唔推薦**。撞到冇 key，你要明明白白同用戶講「而家係 degraded，捉重複、清字幕、配 B-roll 呢幾件靈魂嘢冇做到，建議去開個免費 key（SETUP.md 一分鐘）」，唔好靜雞雞當冇事。
+- **Step 3 Gemini 聽 audio 捉漏網重複** + **Step 5 字幕清潔 / 自驗** + **Step 5.5 B-roll 索引 / 配對**,全部靠 Gemini。AI agent 唔可以淨靠文字稿取代聽原聲同睇素材。
+- **冇 key = degraded 模式**：pipeline 照跑得，但會跳過 Gemini 嗰幾步 —— 仍然只跟 EDL 剪片，唔會靠 silence-trim 靜靜落刀；但字幕未清潔、漏網 retake 冇聽力覆核、B-roll 配對做唔到（punch 照用得）。**呢個唔推薦**。要明講而家係 degraded，並建議跟 `SETUP.md` 開 API key；部分 model 有有限額 Free Tier。
 
 ---
 

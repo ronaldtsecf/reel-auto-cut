@@ -3,6 +3,10 @@
 > ⭐ 小白友善｜裝一次約 10 分鐘｜**Mac 最穩，Windows / Linux 實驗性**
 > 抌一條 raw 口播片，AI 幫你自動剪走 NG 同重複 take、執好字幕、出成品。
 
+> **v0.2 production-safety refresh**：iPhone HLG／PQ HDR 自動安全轉 BT.709、
+> cache 改用內容 SHA-256、proof 綁死 exact EDL／原片、`--ship` 成品固定
+> 1080×1920／60fps／BT.709。舊用戶睇 [更新／重新安裝](SETUP.md#-已經裝過點更新重新安裝)。
+
 ---
 
 ## 📌 呢個解決咩問題
@@ -19,8 +23,9 @@ reel-auto-cut 將呢件事**交俾 AI 做**：你抌條片俾你個 AI 助手（
 - **自動 punch 放大**：一啲一啲位輕微放大鏡頭（cut-out 效果），一嚟遮住剪接位嘅跳格，二嚟做啲節奏感 —— 唔使你手動 keyframe，開盒即有，唔想要一個掣關得
 - **B-roll 自動配對**：你有自己嘅片段素材（cut-away 片、示範片段、screen record 等）？AI 睇你講緊咩，自動揀合適嗰條 b-roll 疊上去對應位置。冇素材就自動跳過，唔影響其他嘢
 - 一份**字幕**（`.srt` 檔）：跟你實際講嘅，唔係跟稿
-- 一條**可以直接出街嘅成品片**（final video）：字幕燒入 + punch + B-roll 全部落埋，一條龍出 `_final.mp4`，唔使再入任何剪片 app
+- 一條**字幕燒咗入去嘅成品片**：punch + B-roll 全部落埋，一條龍出 `_final.mp4`；完整睇一次後就可以出街
 - 一條**「我剷走咗咩」嘅預覽片**：唔信 AI 剪錯？揿開掃 30 秒就知，唔使盲信
+- 一份**成品規格收據**：`--ship` 後會驗 1080×1920／60fps／BT.709，唔合格唔會扮完成
 
 ## 🔄 佢點 work（成個流程）
 
@@ -37,16 +42,19 @@ reel-auto-cut 將呢件事**交俾 AI 做**：你抌條片俾你個 AI 助手（
   ③ 決定剪邊度   AI 睇晒，每句揀最後一個完整 take、剪走 NG
         │
         ▼
-  ④ 剪 + 放大    剪出成條片，順手落 punch（cut-out 放大）遮剪接位、加節奏
+  ④ 快速驗聲     proof 綁 exact 原片 + EDL；改過刀位就必須重驗
         │
         ▼
-  ⑤（可選）配 B-roll  AI 睇你講緊咩，自動揀你嘅素材疊上去對應位置
+  ⑤ 剪 + 放大    剪出成條片，順手落 punch（cut-out 放大）遮剪接位、加節奏
         │
         ▼
-  ⑥ 一鍵打包     剪好嘅片 + 字幕 + 後製指引 + 「剷走咗咩」預覽片
+  ⑥（可選）配 B-roll  AI 睇你講緊咩，自動揀你嘅素材疊上去對應位置
         │
         ▼
-  ⑦（可選）成品  字幕燒入 + punch + B-roll 全部落埋，出 final 直接出街
+  ⑦ 一鍵打包     剪好嘅片 + 字幕 + 後製指引 + 「剷走咗咩」預覽片
+        │
+        ▼
+  ⑧（可選）成品  字幕燒入 + 規格驗證，再交人眼睇一次
 ```
 
 技術上係 `whisper`（聽寫工具）+ `Gemini`（AI，負責用耳捉重複、揀 B-roll）+ `ffmpeg`（剪片工具），**全自動，唔使你掂任何介面**。
@@ -58,18 +66,20 @@ reel-auto-cut 將呢件事**交俾 AI 做**：你抌條片俾你個 AI 助手（
    > 我有條口播片喺 `~/Desktop/my_reel.mp4`，幫我用 reel-auto-cut 剪。
 3. AI 自己讀 [INSTRUCTIONS.md](INSTRUCTIONS.md) 跟住跑。**第一次唔會問你嘢，全部用預設跑**；淨係撞到真係要你揀（例如同一句你講咗兩個唔同版本）先停低問。
 
+GitHub link：<https://github.com/ronaldtsecf/reel-auto-cut>
+
 ## 📋 你要準備啲咩
 
 **死要求（冇就跑唔到）：**
 - 一部電腦（Mac / Windows / Linux 都得）+ 識開「終端機」（Mac）或者「PowerShell」（Windows）—— 唔識開？叫 AI 一步步教你。
 - `Python` 同 `ffmpeg`（兩個免費工具，處理影片同跑程式用）—— SETUP 教你裝，或者叫 AI 幫你。
-- 一個**免費 Gemini key**（喺 [Google AI Studio](https://aistudio.google.com/apikey) 開，唔使俾錢、唔使綁卡）。
+- 一個 **Gemini API key**（喺 [Google AI Studio](https://aistudio.google.com/apikey) 開；部分 model 有有限額 Free Tier，實際條件見 [官方 billing 頁](https://ai.google.dev/gemini-api/docs/billing)）。
 
 **可選（有就更好）：**
 - Apple Silicon Mac（M1 之後嗰啲）→ 自動行 `mlx` 加速，快好多；冇就行 `faster-whisper`，慢少少但一樣得。
 - 一個裝住你自己 B-roll 素材嘅資料夾（自己拍嘅片段、screen record、示範片等）→ 想 AI 幫你自動配 B-roll 先要；冇就跳過呢步，其餘功能照跑。
 
-> 🤖 **點解一定要 Gemini key？** `whisper`（聽寫工具）有個盲點：你 NG 完重講同一句，佢成日只當你講咗一次，捉唔到你重複咗。`Gemini` 識真係**聽返條 audio** 捉返晒啲重複 take —— 呢個係成個 kit 嘅靈魂。冇佢就退化成普通剪靜音，市面免費 app 一大堆，唔值得用呢個 kit。所以呢個 key 唔慳得（但係免費）。
+> 🤖 **點解一定要 Gemini key？** `whisper`（聽寫工具）有個盲點：你 NG 完重講同一句，佢成日只當你講咗一次，捉唔到你重複咗。`Gemini` 識真係**聽返條 audio** 捉返晒啲重複 take，亦會睇你嘅素材做 B-roll 配對。冇 key 會失去捉漏網重複、字幕清潔同 B-roll 配對；部分 model 有有限額 Free Tier，實際條件跟 Google 當刻資料。
 
 ## 🌐 冇 Claude Code？用 OpenAI Codex 都得
 
@@ -84,9 +94,13 @@ reel-auto-cut 將呢件事**交俾 AI 做**：你抌條片俾你個 AI 助手（
 - **淨支援廣東話**（聽寫設定咗 `yue`）。其他語言要自己改。
 - **目前 Mac 上驗證最齊**（開發者主力平台）。Windows / Linux 跨平台 engine + encoder 都做咗，理論行得到，但暫時未喺真機完整實測，當實驗性 —— 撞到問題歡迎開 issue。
 - Mac 行 `mlx` 最快；Windows / Linux 行 `faster-whisper`，冇 GPU 嘅話一條幾分鐘片可能要跑幾分鐘，要有啲耐性。
+- AI 剪接唔係人眼簽收：出街前要睇一次成品，並掃一次 `rejects_preview.mp4`；工具唔會用 silencedetect 靜靜落刀食走低聲句尾。
+- HDR 自動轉色要 FFmpeg 有 `zscale`／`tonemap`；`python scripts/preflight.py --strict` 會預先 check。
 
 ## License
 
 [MIT](LICENSE) —— 隨便用、改、商用，標返出處就得。
 
 英文版睇 [README.en.md](README.en.md)。覺得有用 star 一下 ⭐
+
+版本記錄：[CHANGELOG.md](CHANGELOG.md)

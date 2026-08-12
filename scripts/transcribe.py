@@ -15,8 +15,9 @@ Env:
     JYUT_WHISPER_DEVICE = cpu | cuda     (faster only; default auto-detect)
 
 Output: <out-dir>/transcript.json
-    {source, source_key, duration, language, words:[{start,end,text}], segments:[{start,end,text}]}
-Cache: source_key = path+size+mtime hash。transcript.json 已 match 就 skip。
+    {source, source_sha256, duration, language, words:[...], segments:[...]}
+Cache: 以檔案內容 SHA-256 認片；路徑／mtime 唔可以冒認內容。audio.wav
+       同 transcript.json 兩件都存在兼 digest 一致先會命中。
 """
 import argparse
 import hashlib
@@ -31,9 +32,12 @@ MLX_MODEL = os.environ.get("JYUT_WHISPER_MODEL", "mlx-community/whisper-large-v3
 FW_MODEL = os.environ.get("JYUT_WHISPER_MODEL", "large-v3")
 
 
-def source_key(path: Path) -> str:
-    st = path.stat()
-    return hashlib.sha256(f"{path}|{st.st_size}|{st.st_mtime_ns}".encode()).hexdigest()[:16]
+def source_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(4 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def pick_audio_map(video: Path) -> "str | None":
@@ -123,11 +127,14 @@ def transcribe(video: Path, out_dir: Path, language: str, initial_prompt: str) -
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "transcript.json"
     wav = out_dir / "audio.wav"          # persist：Gemini 驗證 + 顯微抽 clip 都要用
-    key = source_key(video)
+    digest = source_sha256(video)
     if out_path.exists():
-        cached = json.loads(out_path.read_text())
-        if cached.get("source_key") == key:
-            print(f"cache hit — {out_path}")
+        try:
+            cached = json.loads(out_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            cached = {}
+        if cached.get("source_sha256") == digest and wav.is_file():
+            print(f"cache hit（content sha256）— {out_path}")
             return out_path
 
     # cache miss（source 新或變）→ force re-extract wav（同名覆寫會令舊 wav stale）。
@@ -151,7 +158,8 @@ def transcribe(video: Path, out_dir: Path, language: str, initial_prompt: str) -
     ).stdout.strip())
 
     out_path.write_text(json.dumps(
-        {"source": str(video), "source_key": key, "duration": duration,
+        {"source": str(video), "source_sha256": digest,
+         "source_size_bytes": video.stat().st_size, "duration": duration,
          "language": detected_lang, "words": words, "segments": segments},
         ensure_ascii=False, indent=1))
     print(f"wrote {out_path} — {len(words)} words / {len(segments)} segments / {duration:.1f}s")
