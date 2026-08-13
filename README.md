@@ -36,7 +36,7 @@ reel-auto-cut 將呢件事**交俾 AI 做**：你抌條片俾你個 AI 助手（
   ① 聽寫        whisper 將你把聲轉做逐字時間碼
         │
         ▼
-  ② 捉重複      Gemini 用耳聽返條 audio，揾返 whisper 漏咗嘅重複 take
+  ②（有 key）捉重複  Gemini 用耳聽返條 audio，揾返 whisper 漏咗嘅重複 take
         │
         ▼
   ③ 決定剪邊度   AI 睇晒，每句揀最後一個完整 take、剪走 NG
@@ -57,7 +57,7 @@ reel-auto-cut 將呢件事**交俾 AI 做**：你抌條片俾你個 AI 助手（
   ⑧（可選）成品  字幕燒入 + 規格驗證，再交人眼睇一次
 ```
 
-技術上係 `whisper`（聽寫工具）+ `Gemini`（AI，負責用耳捉重複、揀 B-roll）+ `ffmpeg`（剪片工具），**全自動，唔使你掂任何介面**。
+技術上係 `whisper`（聽寫工具）+ `ffmpeg`（剪片工具），再按需要加 `Gemini`（可選 AI，負責用耳捉重複、清字幕同揀 B-roll）。冇 Gemini key 都可以行基本剪片；有 key 就會開埋完整 AI 功能。
 
 ## 🚀 點用（三步）
 
@@ -73,13 +73,13 @@ GitHub link：<https://github.com/ronaldtsecf/reel-auto-cut>
 **死要求（冇就跑唔到）：**
 - 一部電腦（Mac / Windows / Linux 都得）+ 識開「終端機」（Mac）或者「PowerShell」（Windows）—— 唔識開？叫 AI 一步步教你。
 - `Python` 同 `ffmpeg`（兩個免費工具，處理影片同跑程式用）—— SETUP 教你裝，或者叫 AI 幫你。
-- 一個 **Gemini API key**（喺 [Google AI Studio](https://aistudio.google.com/apikey) 開；部分 model 有有限額 Free Tier，實際條件見 [官方 billing 頁](https://ai.google.dev/gemini-api/docs/billing)）。
 
 **可選（有就更好）：**
+- 一個 **Gemini API key**（喺 [Google AI Studio](https://aistudio.google.com/apikey) 開）→ 開啟捉漏網重複、字幕清潔同 B-roll 配對；冇 key 基本剪片、punch、HDR、proof 同 final QC 照用得。部分 model 有有限額 Free Tier，實際條件見 [官方 billing 頁](https://ai.google.dev/gemini-api/docs/billing)。
 - Apple Silicon Mac（M1 之後嗰啲）→ 自動行 `mlx` 加速，快好多；冇就行 `faster-whisper`，慢少少但一樣得。
 - 一個裝住你自己 B-roll 素材嘅資料夾（自己拍嘅片段、screen record、示範片等）→ 想 AI 幫你自動配 B-roll 先要；冇就跳過呢步，其餘功能照跑。
 
-> 🤖 **點解一定要 Gemini key？** `whisper`（聽寫工具）有個盲點：你 NG 完重講同一句，佢成日只當你講咗一次，捉唔到你重複咗。`Gemini` 識真係**聽返條 audio** 捉返晒啲重複 take，亦會睇你嘅素材做 B-roll 配對。冇 key 會失去捉漏網重複、字幕清潔同 B-roll 配對；部分 model 有有限額 Free Tier，實際條件跟 Google 當刻資料。
+> 🤖 **Gemini key 加咗啲咩？** `whisper`（聽寫工具）有個盲點：你 NG 完重講同一句，佢成日只當你講咗一次，捉唔到你重複咗。`Gemini` 識真係**聽返條 audio** 捉漏網 take，亦會清字幕同睇素材做 B-roll 配對。冇 key 會自動行 basic mode，唔會扮做咗呢三步。
 
 ## 🌐 冇 Claude Code？用 OpenAI Codex 都得
 

@@ -17,11 +17,12 @@
 - B-roll visual-index cache also uses content SHA-256; old size／mtime entries refresh once.
 - Silence detection is report-only by default. It no longer moves EDL boundaries or removes low-volume speech automatically.
 - Traditional-Chinese subtitle defaults now use PingFang TC／Microsoft JhengHei／Noto Sans CJK TC by platform.
-- Setup now includes exact clone, update, reinstall, and strict preflight commands.
+- Setup now includes exact clone, update, reinstall, and preflight commands; key-free basic mode passes normal preflight, while `--strict` validates the full optional-AI setup.
 - New installs use the documented `GEMINI_API_KEY`／`GOOGLE_API_KEY`; the old `GOOGLE_AI_API_KEY` remains compatible.
+- Gemini is optional: key-free basic mode keeps EDL editing, punch, HDR, proof, and final QC, while clearly skipping repeat-listening, subtitle cleanup, and B-roll matching.
 
 ### Upgrade note
 
 Run `git pull --ff-only`, update the Python requirements, then run
-`python scripts/preflight.py --strict`. Existing projects must rerun
+`python scripts/preflight.py` (or `--strict` for full optional-AI checks). Existing projects must rerun
 `proof_check.sh` once to create the new bound proof receipt.

@@ -133,19 +133,20 @@ v0.2 起 cache 只認原片**內容 SHA-256**（逐 byte 指紋），唔再靠�
 
 ---
 
-## 🚀 6. 冇配 Gemini key，出嚟啲嘢好弱
+## 🚀 6. 冇配 Gemini key，而家行緊 basic mode
 
 **你見到咩**
 terminal 出現 `冇 Gemini API key → 用 DRAFT（字幕未清潔；配 key 叻好多）`、或者 `skip self-eval（缺 key …）`。出嚟嘅字幕又多錯別字又斷句怪、重複 take 又冇剷乾淨。
 
 **點解會咁**
-**Gemini 係呢套嘢嘅靈魂，唔係 optional（可有可無）。** 兩樣關鍵工序冇佢做唔到：
+**Gemini 係 optional AI 增強。** 基本剪片、punch、HDR、proof 同 final QC 照行；以下工序就需要 key：
 1. **捉漏網重複 take** —— whisper（聽寫工具）會自動「平滑化」，把結巴、重讀、false start（讀到一半重講）執走，淨靠 whisper 出嚟嘅稿會漏剪。要 Gemini **用耳仔聽返 raw audio** 先捉得返。AI agent（你個 AI 助手）本身冇耳（讀唔到聲），呢樣冇得代替。
 2. **字幕清潔** —— audio-first（以把聲為準）對返把聲逐句執正啲字，廣東話口語先唔會變鬼五馬六。
+3. **B-roll 自動配對** —— Gemini 要先睇明素材同字幕，先可以揀啱片段同時間位。
 
-冇 key 嘅時候 pipeline 唔會死，但會 **degraded（降級，出嚟質素打折）**：字幕只係 whisper 原始 draft（未清潔嘅初稿），self-eval 都 skip 埋。**我哋唔推薦咁用。**
+冇 key 嘅時候 pipeline 會行 **basic mode**：字幕只係 whisper 原始 draft（未清潔嘅初稿），self-eval 同 B-roll 自動配對會 skip；terminal 會明講，唔會扮做咗。
 
-**點搞掂 —— 去配返 Gemini API key**
+**想開返以上 AI 增強功能 —— 配 Gemini API key**
 
 1. 去 [Google AI Studio](https://aistudio.google.com/apikey) 用 Google account 撳「Create API key」。部分 model 有有限額 Free Tier；實際條件見 [官方 billing 頁](https://ai.google.dev/gemini-api/docs/billing)。
 2. 設做環境變數：

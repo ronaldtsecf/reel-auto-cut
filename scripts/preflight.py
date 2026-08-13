@@ -102,7 +102,7 @@ def build_report() -> dict:
         "subtitle_font": _font(),
         "gemini_key": {
             "ok": bool(_gemini_key),
-            "detail": f"已設定（{gemini_key_env}）" if _gemini_key else "未設定（會退化，捉重複同字幕清潔會失效）",
+            "detail": f"已設定（{gemini_key_env}）" if _gemini_key else "未設定（basic mode：會跳過捉漏網重複、字幕清潔同 B-roll 配對）",
         },
         "free_disk_gb": {
             "ok": disk.free >= 10 * 1024**3,

@@ -23,7 +23,7 @@
 用戶大機率係小白 —— 用 Claude / Codex 但唔識寫程式、未必開過 terminal。所以你跑嘅時候：
 
 1. **要個人化資訊，用白話問，唔好估。** 例如「片喺邊」「要唔要出埋成品」—— 用 `AskUserQuestion` 跳框問（Claude Code），或者直接白話問。唔好假設佢識 path 或者技術詞。
-2. **動手前先 check 環境。** 跑之前確認佢裝咗 `ffmpeg` / `Python` / `Gemini key` 未。爭嘢 → 用白話講「你仲爭 X，我幫你裝 / 教你開」，唔好直接掉個 error 出嚟就死。
+2. **動手前先 check 環境。** 跑之前確認佢裝咗 `ffmpeg` / `Python`；再睇有冇 optional `Gemini key`。必要環境爭嘢 → 用白話講「你仲爭 X，我幫你裝」，冇 key → 清楚標示 basic mode，唔好當錯誤停低。
 3. **做完用白話文條列總結，唔好淨係講「done」。** 例：「我幫你 ① 砍咗 3:24 落 1:34 ② 剷走 7 個重複 take ③ 出咗字幕喺 xxx，剷走嗰啲嘢喺 `rejects_preview.mp4` 揿開睇」。等小白睇得明 + 放心。
 4. **全程廣東話，技術詞第一次出現加注解。** 例：第一次講 `transcript` 就寫「（聽寫稿）」。
 
@@ -37,7 +37,7 @@
 - `$WORK` = 你開嘅工作資料夾（一條片一個，例如 `work/my-reel/`）。raw 片放入面，所有中間產物同成品都喺度。
 - `$PY` = kit 嘅 Python。`SETUP.md` 行完 venv 之後就係 `$KIT/.venv/bin/python`（Mac/Linux）。下面用 `python` 代表，你跑時換成實際路徑。
 
-開工前先跑 `python "$KIT/scripts/preflight.py"`，再確認 `SETUP.md` 行完（ffmpeg、venv、`GEMINI_API_KEY` 或 `GOOGLE_API_KEY`）。冇 Gemini key 會 degraded —— 見最後「Gemini 唔可以 skip」。
+開工前先跑 `python "$KIT/scripts/preflight.py"`，再確認 `SETUP.md` 基本步驟行完（ffmpeg、venv）。有 `GEMINI_API_KEY` 或 `GOOGLE_API_KEY` 就開完整 AI mode；冇 key 照行 basic mode —— 見最後「Gemini 係可選增強」。
 
 ### Step 0 — 開工作資料夾，擺 raw 片
 
@@ -64,7 +64,7 @@ python "$KIT/scripts/pack_transcript.py" work/my-reel/stt/transcript.json -o wor
 
 將逐字 transcript 砌返做一行行嘅句子，停頓位插「⏸ gap」標記 —— 呢啲標記就係 take 之間嘅分界，係你下一步揀 take 嘅最強信號。出 `takes_packed.md`。
 
-### Step 3 — Gemini 聽 audio 捉漏網重複（必跑）
+### Step 3 — Gemini 聽 audio 捉漏網重複（有 key 先跑）
 
 ```
 python "$KIT/scripts/verify_takes_gemini.py" work/my-reel/stt/audio.wav work/my-reel/takes_packed.md -o work/my-reel/gemini_findings.json
@@ -216,12 +216,12 @@ bash "$KIT/reel_finish.sh" work/my-reel --broll work/my-reel/broll_plan.json --s
 
 ---
 
-## Gemini 唔可以 skip
+## Gemini 係可選增強，冇做唔可以扮有做
 
-`GEMINI_API_KEY` 或 `GOOGLE_API_KEY`（Google AI Studio 開；部分 model 有有限額 Free Tier，實際條件睇 `SETUP.md`）係呢個 kit 嘅靈魂。舊安裝嘅 `GOOGLE_AI_API_KEY` 暫時仍兼容。
+`GEMINI_API_KEY` 或 `GOOGLE_API_KEY`（Google AI Studio 開；部分 model 有有限額 Free Tier，實際條件睇 `SETUP.md`）會開啟完整 AI mode。舊安裝嘅 `GOOGLE_AI_API_KEY` 暫時仍兼容。
 
 - **Step 3 Gemini 聽 audio 捉漏網重複** + **Step 5 字幕清潔 / 自驗** + **Step 5.5 B-roll 索引 / 配對**,全部靠 Gemini。AI agent 唔可以淨靠文字稿取代聽原聲同睇素材。
-- **冇 key = degraded 模式**：pipeline 照跑得，但會跳過 Gemini 嗰幾步 —— 仍然只跟 EDL 剪片，唔會靠 silence-trim 靜靜落刀；但字幕未清潔、漏網 retake 冇聽力覆核、B-roll 配對做唔到（punch 照用得）。**呢個唔推薦**。要明講而家係 degraded，並建議跟 `SETUP.md` 開 API key；部分 model 有有限額 Free Tier。
+- **冇 key = basic mode**：pipeline 照跑，跳過 Gemini 嗰幾步 —— 仍然只跟 EDL 剪片，唔會靠 silence-trim 靜靜落刀；punch、HDR、proof 同 final QC 照用得。要明講字幕未經 Gemini 清潔、漏網 retake 冇聽力覆核、B-roll 自動配對冇做，唔可以扮完整 mode。
 
 ---
 

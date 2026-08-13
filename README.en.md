@@ -38,7 +38,7 @@ you drop in one raw talking-head clip
   ① transcribe    whisper turns your voice into word-level timecodes
         │
         ▼
-  ② catch repeats Gemini listens to the audio, surfacing repeat takes whisper merged away
+  ② (with key) catch repeats  Gemini listens for repeat takes whisper merged away
         │
         ▼
   ③ decide cuts   the AI reads it all, keeps the last clean take per line, drops the NGs
@@ -59,7 +59,7 @@ you drop in one raw talking-head clip
   ⑧ (optional) ship  burn in subtitles, verify delivery specs, then do one human watch
 ```
 
-Under the hood it's `whisper` (the transcriber) + `Gemini` (the AI that catches repeats by ear and matches B-roll) + `ffmpeg` (the cutting tool). **Fully automated — you never touch any interface.**
+Under the hood it's `whisper` (the transcriber) + `ffmpeg` (the cutting tool), with optional `Gemini` assistance for repeat detection, subtitle cleanup, and B-roll matching. Basic editing works without a Gemini key; adding one enables the full AI-assisted flow.
 
 ## 🚀 How to use it (3 steps)
 
@@ -75,13 +75,13 @@ Repository: <https://github.com/ronaldtsecf/reel-auto-cut>
 **Must-have (won't run without these):**
 - A computer (Mac / Windows / Linux) + knowing how to open a "Terminal" (Mac) or "PowerShell" (Windows) — don't know how? Ask the AI to walk you through it step by step.
 - `Python` and `ffmpeg` (two free tools, for processing video and running the scripts) — SETUP shows you how, or ask the AI to install them for you.
-- A **Gemini API key** (create one at [Google AI Studio](https://aistudio.google.com/apikey); a limited Free Tier is available for supported models, subject to the [current billing terms](https://ai.google.dev/gemini-api/docs/billing)).
 
 **Optional (nice to have):**
+- A **Gemini API key** (create one at [Google AI Studio](https://aistudio.google.com/apikey)) → enables repeat detection by ear, subtitle cleanup, and B-roll matching. Basic editing, punch-ins, HDR handling, proof, and final QC still work without one. A limited Free Tier is available for supported models, subject to the [current billing terms](https://ai.google.dev/gemini-api/docs/billing).
 - An Apple Silicon Mac (M1 and later) → automatically uses `mlx` acceleration, much faster; without it you run `faster-whisper`, slightly slower but works just the same.
 - A folder of your own B-roll footage (clips you shot yourself, screen recordings, demo footage, etc.) → only needed if you want the AI to auto-match B-roll; skip it and everything else still runs.
 
-> 🤖 **Why is the Gemini key required?** `whisper` (the transcriber) has a blind spot: when you NG and re-record the same line, it often treats it as if you only said it once and misses the repeat. `Gemini` listens to the audio and also understands B-roll content. Without a key, repeat-catching, subtitle cleaning, and B-roll matching are unavailable. Google offers a limited Free Tier for supported models; current terms apply.
+> 🤖 **What does the Gemini key add?** `whisper` (the transcriber) has a blind spot: when you NG and re-record the same line, it often treats it as if you only said it once. `Gemini` listens for those missed repeats, cleans subtitles, and understands B-roll content. Without a key the tool enters basic mode and clearly skips those three features.
 
 ## 🌐 No Claude Code? OpenAI Codex works too
 

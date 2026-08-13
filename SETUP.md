@@ -14,9 +14,9 @@ reel-auto-cut（粵剪）係一個識講人話嘅剪片工具：你抌一條廣�
 
 如果你完全唔想掂 terminal，最簡單做法：**喺 `reel-auto-cut` 資料夾開你個 AI 助手（Claude Code 或者 Codex），將呢份 `SETUP.md` 掉俾佢，講一句：**
 
-> 跟住 SETUP.md 幫我由零裝好 reel-auto-cut，逐步幫我行，撞到要我做嘅嘢（例如去攞 Gemini key）先停低話我知。
+> 跟住 SETUP.md 幫我由零裝好 reel-auto-cut，逐步幫我行；Gemini 係 optional，冇 key 就幫我裝 basic mode。
 
-AI 會自己 copy 命令落 terminal、check 每步成功、撞到要你親手做嘅（例如登入 Google 攞 key）先停低教你。你淨係跟住佢講做就得。
+AI 會自己 copy 命令落 terminal、check 每步成功；只有你揀完整 AI mode 而又未有 key，先會停低教你點登入 Google 攞。你淨係跟住佢講做就得。
 
 下面係**逐步詳解**，想自己跟 / 想睇 AI 幫你做緊咩，都睇得明。
 
@@ -28,7 +28,8 @@ AI 會自己 copy 命令落 terminal、check 每步成功、撞到要你親手�
 
 1. **Python 3.10 或以上** — 跑個工具嘅引擎（Python 係一種程式語言，呢個 kit 用佢寫）。
 2. **ffmpeg** — 處理影片同聲音嘅底層工具（一個業界標準、免費嘅命令列工具）。
-3. **一個 Gemini API key** — Google AI Studio 嘅 AI key（key 即係一串密碼，俾個工具同 Google 個 AI 溝通用），用嚟「聽」你把聲捉返 whisper（聽寫工具）漏咗嘅重複 take。Google 對部分 model 提供有限額 Free Tier；實際可用額度同付款要求以你帳戶當刻顯示為準（下面第 5 步教攞）。
+
+**可選：一個 Gemini API key。** 有 key 會加埋「聽」漏網重複 take、字幕清潔同 B-roll 配對；冇 key 基本剪片照跑。Google 對部分 model 提供有限額 Free Tier；實際可用額度同付款要求以你帳戶當刻顯示為準（下面第 5 步教攞）。
 
 行呢行 check 下 Python 裝咗未、夠唔夠新：
 
@@ -65,7 +66,7 @@ brew install ffmpeg-full
 export PATH="$(brew --prefix ffmpeg-full)/bin:$PATH"
 source .venv/bin/activate
 python -m pip install --upgrade -r requirements.txt
-python scripts/preflight.py --strict
+python scripts/preflight.py
 ```
 
 Apple Silicon Mac 再補：
@@ -81,7 +82,7 @@ git pull --ff-only
 sudo apt update && sudo apt install -y ffmpeg
 source .venv/bin/activate
 python -m pip install --upgrade -r requirements.txt
-python scripts/preflight.py --strict
+python scripts/preflight.py
 ```
 
 **Windows PowerShell：**
@@ -90,7 +91,7 @@ python scripts/preflight.py --strict
 git pull --ff-only
 .venv\Scripts\Activate.ps1
 python -m pip install --upgrade -r requirements.txt
-python scripts/preflight.py --strict
+python scripts/preflight.py
 ```
 
 如果你之前係 Download ZIP，最乾淨係重新去 GitHub 撳 **Code → Download ZIP**，
@@ -181,9 +182,9 @@ pip install -r requirements-mac.txt
 
 ---
 
-## 📌 Step 5 — 攞 Gemini API key
+## 📌 Step 5（可選）— 攞 Gemini API key
 
-呢個係個工具嘅核心。Gemini 會用對耳聽返你條片，捉返 whisper 漏咗嘅重複 take（例如你同一句講咗兩次，whisper 通常只會出一次，但 Gemini 聽得返）。
+想用完整 AI 功能先做呢步；只用 basic mode 可以直接跳去 Step 6。Gemini 會用對耳聽返你條片，捉返 whisper 漏咗嘅重複 take（例如你同一句講咗兩次，whisper 通常只會出一次，但 Gemini 聽得返）。
 
 1. 去 [Google AI Studio](https://aistudio.google.com/apikey)（用你個人 Google account 登入就得）。
 2. 撳 **Create API key**（或 **Get API key**）。Google 對部分 model 提供有限額 Free Tier；模型、地區、額度同付款要求會變，請以 [Gemini API Billing](https://ai.google.dev/gemini-api/docs/billing) 當刻資料同你帳戶畫面為準。
@@ -238,10 +239,10 @@ copy config.example.json config.json
 先跑一個 10 秒 preflight；佢唔會讀你條片、唔會上傳任何嘢：
 
 ```bash
-python scripts/preflight.py --strict
+python scripts/preflight.py
 ```
 
-見到 `PREFLIGHT PASS` 先繼續。`--strict` 會連 Gemini key、HDR filters、字體同磁碟位一齊查。
+見到 `PREFLIGHT PASS` 先繼續。呢個會驗基本剪片所需嘅必要環境；想連 optional Gemini key、字體同磁碟警告都當硬要求，就改跑 `python scripts/preflight.py --strict`。
 
 Smoke test 即係「開機通電試一試」，確認頭先裝嘅嘢全部 work。最快嘅做法：攞**一條短嘅廣東話口播片**（半分鐘到一分鐘就夠，手機橫掂拍都得），放入一個 work 資料夾，跑文字稿嗰步。呢步同時驗到 ffmpeg、Python 環境、whisper engine 三樣係咪都正常。
 
@@ -266,21 +267,21 @@ cat ~/jyut-test/stt/transcript.json | head
 
 見到你條片講嘅嘢變咗文字（檔案入面有 `words` / `segments`）就代表 **whisper + ffmpeg 全部裝好**。
 
-最後驗 Gemini key 通唔通（呢步要 Step 5 set 咗 key）：
+如果你有做 Step 5，最後驗 Gemini key 通唔通；冇 key 就跳過呢段：
 
 ```bash
 python -c "import os; from google import genai; genai.Client(api_key=os.environ['GEMINI_API_KEY']).models.generate_content(model='gemini-2.5-flash', contents='講一個字'); print('Gemini OK')"
 ```
 
-見到 `Gemini OK` 就代表個 API key 通咗，全套裝好，可以開始剪片。
+見到 `Gemini OK` 就代表完整 AI mode 裝好；冇 key 而前面見到 `PREFLIGHT PASS`，就代表 basic mode 裝好，可以開始剪片。
 
 > 之後真正剪片，唔使你逐個 script 手動跑 — 你個 AI agent（Claude Code 或 Codex）會幫你跑成條 pipeline（即係由聽寫到打包成品嘅整條流程），最後一命令 `bash reel_finish.sh <work_dir>` 打包。詳細用法睇 `README` / `INSTRUCTIONS`。
 
 ---
 
-## ⚠️ 冇 Gemini key 嘅 degraded mode（唔推薦）
+## 冇 Gemini key 嘅 basic mode（支援）
 
-**短講：冇 key 都跑得到，但會失去個工具最核心嘅能力，唔建議。**（degraded mode 即係「閹割版」，少咗最重要嗰部分）
+**短講：冇 key 都跑得到基本剪片；只係三項 Gemini AI 增強功能唔會開。**
 
 冇 set `GEMINI_API_KEY`／`GOOGLE_API_KEY` 嗰陣，基本剪片 pipeline 唔會 crash（即係唔會死機停低），但有三樣嘢冧咗：
 
@@ -288,6 +289,6 @@ python -c "import os; from google import genai; genai.Client(api_key=os.environ[
 2. **字幕清潔變返手動。** 字幕嗰步本身都係 Gemini audio-first 清潔（對返你把聲執啱啲字），冇 key 就只出未清潔嘅 draft 字幕（草稿，檔名帶 `_DRAFT`），要你自己手執文字。
 3. **B-roll 唔可以自動配對。** Punch 放大照用得，但素材視覺索引同字幕配對都要 Gemini；冇 key 會明確停低，唔會扮有做。
 
-冇 key 嗰陣個工具實際淨返做：whisper 文字稿 + 按 EDL 剪片 + punch + draft 字幕。佢唔會靠 silence-trim 靜靜落刀；但捉漏網 retake、字幕清潔同 B-roll 配對都冇咗，**唔係** reel-auto-cut 想俾你嘅完整質素。
+冇 key 嗰陣個工具會做：whisper 文字稿 + 按 EDL 剪片 + punch + HDR 安全轉色 + proof + draft 字幕 + final QC。佢唔會靠 silence-trim 靜靜落刀；只係捉漏網 retake、字幕清潔同 B-roll 配對唔會做，亦會清楚標示 basic mode。
 
-完整 mode 需要 Gemini API key；Google 對部分 model 有有限額 Free Tier，但可用額度同付款要求以 [官方 billing 頁](https://ai.google.dev/gemini-api/docs/billing) 同你帳戶為準。建議先跟 [上面 Step 5](#-step-5--攞-gemini-api-key) 設好 key。
+需要以上三項 AI 增強功能時，先跟 [上面 Step 5](#-step-5可選-攞-gemini-api-key) 設好 key。Google 對部分 model 有有限額 Free Tier，但可用額度同付款要求以 [官方 billing 頁](https://ai.google.dev/gemini-api/docs/billing) 同你帳戶為準。
