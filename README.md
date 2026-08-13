@@ -9,6 +9,28 @@
 
 ---
 
+## 🤖 用 Claude／Codex 一鍵安裝（Copy 呢段）
+
+用 **Claude Code** 或 **Codex App** 開一個有本機 terminal／檔案權限嘅對話，將下面成段 copy 落去。AI 會由下載開始，逐步裝到驗證成功：
+
+```text
+幫我由零安裝並驗證 reel-auto-cut：
+https://github.com/ronaldtsecf/reel-auto-cut
+
+請用你嘅本機 terminal 同檔案權限直接執行，唔好淨係列步驟俾我自己做：
+1. 如果本機未有 repo，clone 最新 main 去 ~/reel-auto-cut；如果已經有，先檢查本機改動，唔好覆蓋，再安全更新。
+2. 完整讀 AGENTS.md、SETUP.md 同 INSTRUCTIONS.md，跟足 repo 寫明嘅流程。
+3. 自動判斷我用 macOS、Windows 定 Linux，逐步安裝／檢查 Python、ffmpeg、venv、requirements 同 config。
+4. Gemini 係 optional：預設先裝唔使 key 嘅 basic mode，唔好因為冇 key 停低。如果我揀完整 AI mode，教我喺本機設定 key，永遠唔好叫我將 key 貼入對話。
+5. 安全、可回復嘅步驟直接做；只喺需要系統權限、登入或我作實質選擇時先停低，一次過用白話講我要做咩。
+6. 跑 python scripts/preflight.py；如果失敗，診斷同修正後再跑，直至見到 PREFLIGHT PASS。只做安裝，唔好修改 repo 嘅 tracked files。
+7. 完成後用白話報告：安裝位置、basic／完整 mode、驗證結果，同我之後點樣開始剪第一條片。
+```
+
+> 第一次裝系統工具時，Claude／Codex 可能會叫你撳一次權限批准，呢個係正常安全保護。普通網頁／手機聊天冇本機 terminal 權限，請改用 Claude Code 或 [Codex App](https://openai.com/codex)。想自己逐步裝就睇 [SETUP.md](SETUP.md)。
+
+---
+
 ## 📌 呢個解決咩問題
 
 你對住鏡頭跟稿讀片，每句讀唔順就重讀 —— 一句拍咗三四次，淨係要最後一個 OK 嗰個。但人手喺成條十幾分鐘嘅片入面，逐個揾返邊個 take 好、剪走 NG、收緊抖氣位⋯⋯做到想死。
