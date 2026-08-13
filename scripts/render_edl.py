@@ -6,9 +6,9 @@ Usage:
                   [--keep-master] [--encoder videotoolbox|libx264]
                   [--punch | --no-punch]
 
-Phases: lint EDL → silencedetect snap edges → per-segment extract（pad +
-30ms audio fades + fps 歸一）→ concat -c copy → final pass（setpts/atempo
-變速 + faststart）→ cut_list.md + qc.json。
+Phases: lint EDL → report silences → per-segment extract（EDL + pad only,
+30ms audio fades, fps normalisation, HDR safety）→ concat → final pass
+（setpts/atempo + faststart）→ cut_list.md + qc.json。
 
 EDL schema（video-use 相容 + 自家 fields）:
     {"version": 1, "sources": {"ID": "/abs/path.mp4"},
@@ -40,6 +40,9 @@ MIN_RANGE = 0.3        # range 最短長度（「拜拜」級短句都要過到�
 FADE = 0.03            # 30ms audio fade 防 click（video-use rule #3）
 SIL_NOISE = "-30dB"
 SIL_MIN = 0.25
+BT709_TAG_ARGS = [
+    "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+]
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess:
@@ -54,11 +57,20 @@ def ffprobe_duration(path: str) -> float:
 
 def ffprobe_size(path: str) -> tuple[int, int]:
     r = run(["ffprobe", "-v", "error", "-select_streams", "v:0",
-             "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path])
+             "-show_entries", "stream=width,height:stream_tags=rotate:stream_side_data=rotation",
+             "-of", "json", path])
     try:
-        width, height = r.stdout.strip().split("x")
-        return int(width), int(height)
-    except (TypeError, ValueError):
+        stream = json.loads(r.stdout)["streams"][0]
+        width, height = int(stream["width"]), int(stream["height"])
+        rotation = stream.get("tags", {}).get("rotate", 0)
+        for side_data in stream.get("side_data_list", []):
+            if "rotation" in side_data:
+                rotation = side_data["rotation"]
+                break
+        if abs(int(float(rotation))) % 180 == 90:
+            width, height = height, width
+        return width, height
+    except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
         sys.exit(f"讀唔到片嘅解像度: {path}")
 
 
@@ -207,10 +219,36 @@ def audio_bitrate(quality: str) -> str:
     return "256k" if quality == "rough" else "128k"
 
 
+def source_visual_filter(src: str) -> tuple[str, str, list[str]]:
+    """Return the exact source colour prefix and classification.
+
+    HLG/PQ sources receive one canonical HDR→BT.709 conversion before any
+    frame-rate or scaling filter.  Contradictory high-risk metadata blocks the
+    render; ordinary incomplete SDR metadata is preserved with a warning.
+    """
+    from visual_preflight import (
+        VisualPreflightError,
+        build_source_visual_preflight,
+        probe_source_color,
+    )
+
+    try:
+        preflight = build_source_visual_preflight(probe_source_color(Path(src)))
+    except VisualPreflightError as exc:
+        sys.exit(f"色彩 preflight FAIL：{exc}")
+    classification = str(preflight["source_color"]["classification"])
+    warnings = list(preflight.get("warnings", []))
+    if preflight["tone_map_applied"]:
+        print(f"源片色彩：{classification} → HDR→BT.709（恰好 1 次）")
+    else:
+        print(f"源片色彩：{classification} → 保留原色彩（0 次 tone-map）")
+    return preflight["effective_color_filter"], classification, warnings
+
+
 def extract(src: str, start: float, end: float, out: Path, enc: list[str],
             abr: str = "128k", vf_extra: str = "", label: str = "",
             acodec: str = "pcm_s16le", amap: "str | None" = None,
-            audio_only: bool = False) -> None:
+            audio_only: bool = False, vf_prefix: str = "") -> None:
     dur = end - start
     if audio_only:
         # proof render：唔郁 video（秒級 vs 分鐘級），刀位/fade 同真 render 完全一致
@@ -223,7 +261,8 @@ def extract(src: str, start: float, end: float, out: Path, enc: list[str],
         if r.returncode != 0:
             sys.exit(f"extract fail {out.name}:\n{r.stderr[-800:]}")
         return
-    vf = "fps=60,format=yuv420p" + ("," + vf_extra if vf_extra else "")
+    vf = (vf_prefix + "," if vf_prefix else "") + "fps=60,format=yuv420p"
+    vf += "," + vf_extra if vf_extra else ""
     if label:
         safe = label.replace(":", r"\:")
         vf += (f",drawtext=text='{safe}':x=20:y=60:fontsize=36:fontcolor=white"
@@ -236,9 +275,10 @@ def extract(src: str, start: float, end: float, out: Path, enc: list[str],
     # 之前 bug：每段 aac priming ~32ms，22 段 = 0.7s audio 拖後（final 0.68s drift）。
     # rejects preview 傳 acodec="aac"（preview 唔 care priming，慳體積）。
     a_args = ["-c:a", acodec] + (["-b:a", abr] if acodec == "aac" else [])
+    tag_args = BT709_TAG_ARGS if vf_prefix else []
     r = run(["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.3f}", "-i", src,
              "-t", f"{dur:.3f}", *amap_args, "-vf", vf, "-af", af,
-             *enc, *a_args, "-shortest", str(out)])  # video=audio 等長,防 concat A/V 累積
+             *enc, *tag_args, *a_args, "-shortest", str(out)])  # video=audio 等長,防 concat A/V 累積
     if r.returncode != 0:
         sys.exit(f"extract fail {out.name}:\n{r.stderr[-800:]}")
 
@@ -255,7 +295,7 @@ def concat(segs: list[Path], out: Path, workdir: Path) -> None:
 def trim_silences(src: str, out: Path, enc: list[str], abr: str, dur: float,
                   segdir: Path, floor: float = 0.12, thresh: float = 0.30,
                   acodec: str = "pcm_s16le", amap: "str | None" = None,
-                  audio_only: bool = False) -> dict:
+                  audio_only: bool = False, tag_bt709: bool = False) -> dict:
     """Render 後 global silence-trim：detect 全片 silence ≥thresh，每個切到剩 floor。
     Catch split_on_internal_silences 漏咗嘅停頓（EDL range 邊界 / 片頭片尾 / range
     之間 concat gap）— 呢啲唔喺 range 內部，per-segment 常數 trim 唔到。
@@ -293,7 +333,8 @@ def trim_silences(src: str, out: Path, enc: list[str], abr: str, dur: float,
             seg = segdir / f"trim_{i:03d}.mov"
             rr = run(["ffmpeg", "-y", "-v", "error", "-ss", f"{ks:.3f}", "-i", src,
                       "-t", f"{ke - ks:.3f}", "-vf", "fps=60,format=yuv420p",
-                      *enc, *a_args, "-shortest", str(seg)])  # video=audio 等長
+                      *enc, *(BT709_TAG_ARGS if tag_bt709 else []),
+                      *a_args, "-shortest", str(seg)])  # video=audio 等長
         if rr.returncode != 0:
             sys.exit(f"trim seg fail:\n{rr.stderr[-600:]}")
         tsegs.append(seg)
@@ -311,8 +352,10 @@ def main() -> None:
     ap.add_argument("--out", required=True, help="final mp4 path")
     ap.add_argument("--speed", type=float, default=1.05)
     ap.add_argument("--rejects", action="store_true", help="出 NG 段串燒 preview")
-    ap.add_argument("--tighten", type=float, default=0.6,
-                    help="range 內部 silence ≥ 呢個秒數就壓縮到 ~0.35s（0 = off）")
+    ap.add_argument("--tighten", type=float, default=0.0,
+                    help="明確 opt-in：range 內部 silence ≥ 呢個秒數先壓縮（default 0 = off）")
+    ap.add_argument("--global-trim", action="store_true",
+                    help="明確 opt-in：自動壓短全片 silence；default off，避免誤食低聲粵語尾音")
     ap.add_argument("--keep-master", action="store_true")
     ap.add_argument("--encoder", choices=["videotoolbox", "libx264"], default="videotoolbox")
     ap.add_argument("--quality", choices=["preview", "rough"], default="preview",
@@ -343,7 +386,7 @@ def main() -> None:
     final_enc = encoder_args(quality, "final")
     abr = audio_bitrate(quality)
     warnings: list[str] = []
-    snap_log: list[dict] = []
+    edge_log: list[dict] = []
     tighten_log: list[dict] = []
     punch_cfg = CONFIG.get("punch", {})
     punch_enabled = bool(punch_cfg.get("enabled", True)) if a.punch is None else a.punch
@@ -355,29 +398,29 @@ def main() -> None:
         sys.exit("config punch.zoom 唔可以細過 1.0")
     punch_active = (punch_enabled and punch_zoom > 1.0
                     and len(edl["ranges"]) > 1 and not a.audio_only)
+    tone_map_prefix, source_color_classification, color_warnings = (
+        ("", "audio_lane", []) if a.audio_only else source_visual_filter(src)
+    )
+    warnings.extend(color_warnings)
+    if tone_map_prefix:
+        warnings.append("HDR source 已用 canonical chain 轉 BT.709 一次；交付前仍要抽 2–3 格人眼睇膚色")
 
-    print("detecting silences…")
+    print("detecting silences（只報告，唔自動落刀）…")
     sils = detect_silences(src, amap)
     print(f"{len(sils)} silence intervals（{SIL_NOISE}/{SIL_MIN}s）")
 
-    # 逐段：pad → snap → extract
+    # 逐段：只跟 EDL boundary + pad；silencedetect 永遠唔會靜靜改刀。
     segs: list[Path] = []
     cut_rows: list[dict] = []
     for i, r in enumerate(edl["ranges"], 1):
-        # per-range pad override（NG 零唞氣硬切位用 pad 0）；有 override = 精確刀位，跳過 snap
+        # per-range pad override（NG 零唞氣硬切位用 pad 0）。
         pb, pa = r.get("pad_before", PAD_BEFORE), r.get("pad_after", PAD_AFTER)
         raw_in, raw_out = r["start"] - pb, r["end"] + pa
-        if "pad_before" in r:
-            cut_in = max(0.0, raw_in)
-        else:
-            cut_in = snap_edge(max(0.0, raw_in), "in", sils, warnings, f"range {i}")
-        if "pad_after" in r:
-            cut_out = min(src_dur, raw_out)
-        else:
-            cut_out = snap_edge(min(src_dur, raw_out), "out", sils, warnings, f"range {i}")
+        cut_in = max(0.0, raw_in)
+        cut_out = min(src_dur, raw_out)
         if cut_out - cut_in < MIN_RANGE:
-            sys.exit(f"range {i} snap 完短過 {MIN_RANGE}s — check EDL")
-        # range 內 dropped sub-ranges 切走（NG 喺 take 中間，e.g. false start）→ 每段再 tighten
+            sys.exit(f"range {i} 加 pad 後短過 {MIN_RANGE}s — check EDL")
+        # dropped 係 EDL 明示刀；tighten 只有 caller 明確 opt-in 先會郁。
         pieces = []
         for ks, ke in subtract_drops(cut_in, cut_out, r.get("dropped", [])):
             pieces += (split_on_internal_silences(ks, ke, sils, a.tighten,
@@ -391,10 +434,11 @@ def main() -> None:
             ext = "wav" if a.audio_only else "mov"  # PCM audio → .mov（video）/ .wav（proof）
             seg = segdir / f"seg_{i:03d}_{j}.{ext}"
             extract(src, ps, pe, seg, seg_enc, abr=abr, vf_extra=vf_punch,
-                    amap=amap, audio_only=a.audio_only)
+                    amap=amap, audio_only=a.audio_only, vf_prefix=tone_map_prefix)
             segs.append(seg)
-        snap_log.append({"range": i, "in": [round(raw_in, 3), round(cut_in, 3)],
-                         "out": [round(raw_out, 3), round(cut_out, 3)]})
+        edge_log.append({"range": i, "in": [round(raw_in, 3), round(cut_in, 3)],
+                         "out": [round(raw_out, 3), round(cut_out, 3)],
+                         "source": "edl_plus_pad"})
         cut_rows.append({**r, "n": i, "cut_in": cut_in, "cut_out": cut_out,
                          "dur": sum(pe - ps for ps, pe in pieces),
                          "n_tighten": len(pieces) - 1})
@@ -402,13 +446,18 @@ def main() -> None:
     m_ext = "wav" if a.audio_only else "mov"
     master = workdir / f"cut_master.{m_ext}"  # PCM audio（無 AAC priming 累積）→ A/V 同步
     concat(segs, master, workdir)
-    # global silence-trim：catch split 漏嘅 EDL 邊界/片頭片尾/range 之間 停頓（v7）
-    raw_mdur = ffprobe_duration(str(master))
-    master_trim = workdir / f"cut_master_trim.{m_ext}"
-    trim_info = trim_silences(str(master), master_trim, seg_enc, abr, raw_mdur, segdir,
-                              audio_only=a.audio_only)
-    print(f"silence-trim: 切咗 {trim_info['trimmed']} 個停頓, 慳 {trim_info['saved']}s")
-    master = master_trim
+    trim_info = {"trimmed": 0, "saved": 0.0}
+    if a.global_trim:
+        raw_mdur = ffprobe_duration(str(master))
+        master_trim = workdir / f"cut_master_trim.{m_ext}"
+        trim_info = trim_silences(
+            str(master), master_trim, seg_enc, abr, raw_mdur, segdir,
+            audio_only=a.audio_only, tag_bt709=bool(tone_map_prefix),
+        )
+        print(f"silence-trim（opt-in）：切咗 {trim_info['trimmed']} 個停頓, 慳 {trim_info['saved']}s")
+        master = master_trim
+    else:
+        print("silence-trim: OFF（只報告；任何刪減先寫入 EDL）")
     master_dur = ffprobe_duration(str(master))
 
     # final pass：變速 + faststart（audio-only：直接 copy wav，proof 唔使變速）
@@ -424,7 +473,8 @@ def main() -> None:
     else:
         r = run(["ffmpeg", "-y", "-v", "error", "-i", str(master),
                  "-vf", f"setpts=PTS/{a.speed},fps=60", "-af", f"atempo={a.speed}",
-                 *final_enc, "-c:a", "aac", "-b:a", abr,
+                 *final_enc, *(BT709_TAG_ARGS if tone_map_prefix else []),
+                 "-c:a", "aac", "-b:a", abr,
                  "-movflags", "+faststart", str(final)])
     if r.returncode != 0:
         sys.exit(f"final pass fail:\n{r.stderr[-800:]}")
@@ -443,7 +493,8 @@ def main() -> None:
                     (["-c:v", "h264_videotoolbox", "-b:v", "2M"] if _MAC_VT
                      else ["-c:v", "libx264", "-crf", "30", "-preset", "ultrafast"]),
                     vf_extra="scale=480:854", acodec="aac",
-                    label=f"REJ {j:02d} | src {fmt_tc(gs)}", amap=amap)
+                    label=f"REJ {j:02d} | src {fmt_tc(gs)}", amap=amap,
+                    vf_prefix=tone_map_prefix)
             rsegs.append(seg)
         if rsegs:
             rejects_path = workdir / "rejects_preview.mp4"
@@ -460,10 +511,16 @@ def main() -> None:
           "final_delta_s": round(final_dur - expected_final, 2),
           "speed": a.speed, "encoder": a.encoder,
           "punch": punch_active, "punch_zoom": punch_zoom,
+          "source_color_classification": source_color_classification,
+          "tone_map_applied": bool(tone_map_prefix),
+          "tone_map_stage_count": 1 if tone_map_prefix else 0,
+          "automatic_global_trim": bool(a.global_trim),
           "tighten_threshold": a.tighten,
           "tighten_saved_s": round(sum(t["saved_s"] for t in tighten_log), 2),
           "tighten_log": tighten_log,
-          "snap_log": snap_log, "warnings": warnings}
+          "edge_log": edge_log,
+          "reported_silence_intervals": [[round(s, 3), round(e, 3)] for s, e in sils],
+          "warnings": warnings}
     (workdir / "qc.json").write_text(json.dumps(qc, ensure_ascii=False, indent=1))
 
     lines = ["# Cut List", "",

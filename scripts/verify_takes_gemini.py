@@ -8,7 +8,7 @@ Whisper 係 LM 導向，會自動平滑化重複位（結巴、即時重讀、fa
 Usage:
     verify_takes_gemini.py <audio> <takes_packed.md> [-o findings.json]
 
-需要 GOOGLE_AI_API_KEY env var（genai-env 跑）。
+需要 GEMINI_API_KEY 或 GOOGLE_API_KEY env var（舊安裝嘅 GOOGLE_AI_API_KEY 仍兼容）。
 """
 import argparse
 import base64
@@ -21,6 +21,9 @@ from pathlib import Path
 
 from google import genai
 from google.genai.types import GenerateContentConfig
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from gemini_key import resolve_gemini_key
 
 MODEL = "gemini-2.5-pro"          # 聽力 ground-truth 用 pro；quota 問題先退 flash
 FALLBACK_MODEL = "gemini-2.5-flash"
@@ -109,9 +112,9 @@ def main() -> None:
     ap.add_argument("-o", "--output", default=None)
     a = ap.parse_args()
 
-    api_key = os.environ.get("GOOGLE_AI_API_KEY")
+    api_key, _key_env = resolve_gemini_key()
     if not api_key:
-        sys.exit("GOOGLE_AI_API_KEY not set")
+        sys.exit("GEMINI_API_KEY / GOOGLE_API_KEY not set")
     client = genai.Client(api_key=api_key, http_options={"timeout": 300_000})
 
     audio = Path(a.audio)

@@ -47,6 +47,7 @@ FILLER_PATTERNS = [
 # 格式：[["STT 聽錯嘅字", "正確寫法"], ...]。唔填 = no-op（純 string replace）。
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from kit_config import CONFIG as _CFG
+from gemini_key import resolve_gemini_key
 GLOSSARY_FIXES = [p for p in _CFG.get("glossary_fixes", [])
                   if isinstance(p, (list, tuple)) and len(p) == 2]
 
@@ -161,9 +162,9 @@ def gemini_correct(mp3_path, srt_entries, glossary=None):
     唔再餵口播稿做 ground truth —— 即興改稿嘅片，Gemini 會信稿改返你實際講嘅 take
     （「AI 九成功力大錯特錯」變返稿「AI 全部」），字幕同片對唔上。改用 audio-first +
     純串法 glossary。"""
-    api_key = os.environ.get("GOOGLE_AI_API_KEY")
+    api_key, _key_env = resolve_gemini_key()
     if not api_key:
-        print("ERROR: GOOGLE_AI_API_KEY not set")
+        print("ERROR: GEMINI_API_KEY / GOOGLE_API_KEY not set")
         sys.exit(1)
     client = genai.Client(api_key=api_key, http_options={"timeout": 120_000})
 

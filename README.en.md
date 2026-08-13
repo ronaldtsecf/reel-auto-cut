@@ -3,6 +3,10 @@
 > ⭐ Beginner-friendly｜~10 min one-time setup｜**Mac best-tested, Windows / Linux experimental**
 > Drop in one raw talking-head clip; an AI agent cuts the NG / duplicate takes, cleans the subtitles, and hands you a finished package.
 
+> **v0.2 production-safety refresh:** safe HLG/PQ HDR→BT.709 conversion,
+> content-SHA cache identity, proof receipts bound to the exact EDL/source,
+> and verified 1080×1920/60fps/BT.709 `--ship` output.
+
 中文版（廣東話，default）：see [`README.md`](README.md).
 
 ---
@@ -21,8 +25,9 @@ reel-auto-cut **hands that job to an AI agent**: you drop the clip on your AI as
 - **Automatic punch-ins**: select moments get a subtle zoom (a cut-out effect) that both hides the jump at each edit point and adds rhythm — no manual keyframing, on by default, and one flag turns it off if you don't want it.
 - **Automatic B-roll matching**: got your own footage (cut-aways, demo clips, screen recordings)? The AI reads what you're saying and drops the right B-roll onto the matching moments. No footage? It's skipped automatically — nothing else changes.
 - A **subtitle file** (`.srt`): matching what you actually said, not the script.
-- A **ready-to-post finished clip** (final video): subtitles burned in, punch-ins and B-roll all baked in, output as `_final.mp4` in one shot — no need to open any editing app.
+- A **finished `_final.mp4`** with subtitles, punch-ins, and B-roll baked in, ready for your final human watch before posting.
 - A **"here's what I cut" preview clip**: don't trust the AI's edit? Scrub it for 30 seconds and you'll know — no blind faith required.
+- A **machine-readable final QC receipt**: `--ship` fails if the output is not 1080×1920, 60fps, 8-bit BT.709.
 
 ## 🔄 How it works (the full flow)
 
@@ -33,25 +38,28 @@ you drop in one raw talking-head clip
   ① transcribe    whisper turns your voice into word-level timecodes
         │
         ▼
-  ② catch repeats Gemini listens to the audio, surfacing repeat takes whisper merged away
+  ② (with key) catch repeats  Gemini listens for repeat takes whisper merged away
         │
         ▼
   ③ decide cuts   the AI reads it all, keeps the last clean take per line, drops the NGs
         │
         ▼
-  ④ cut + punch   assembles the cut, adding punch-ins (cut-out zooms) to hide edits and add rhythm
+  ④ audio proof   bind the exact source + EDL; changed cuts invalidate the old proof
         │
         ▼
-  ⑤ (optional) B-roll  the AI reads what you're saying and overlays your footage on the matching spots
+  ⑤ cut + punch   assemble the cut and add punch-ins to hide edits and add rhythm
         │
         ▼
-  ⑥ one-shot pack edited cut + subtitles + B-roll briefing + "what got cut" preview
+  ⑥ (optional) B-roll  overlay your footage on matching moments
         │
         ▼
-  ⑦ (optional) ship  subtitles burned in, punch-ins + B-roll all baked in, output ready to post
+  ⑦ one-shot pack edited cut + subtitles + B-roll briefing + "what got cut" preview
+        │
+        ▼
+  ⑧ (optional) ship  burn in subtitles, verify delivery specs, then do one human watch
 ```
 
-Under the hood it's `whisper` (the transcriber) + `Gemini` (the AI that catches repeats by ear and matches B-roll) + `ffmpeg` (the cutting tool). **Fully automated — you never touch any interface.**
+Under the hood it's `whisper` (the transcriber) + `ffmpeg` (the cutting tool), with optional `Gemini` assistance for repeat detection, subtitle cleanup, and B-roll matching. Basic editing works without a Gemini key; adding one enables the full AI-assisted flow.
 
 ## 🚀 How to use it (3 steps)
 
@@ -60,18 +68,20 @@ Under the hood it's `whisper` (the transcriber) + `Gemini` (the AI that catches 
    > I have a talking-head clip at `~/Desktop/my_reel.mp4`, edit it with reel-auto-cut.
 3. The AI reads [INSTRUCTIONS.md](INSTRUCTIONS.md) and runs it. **The first run won't pester you — it uses defaults throughout**; it only stops to ask when there's a real decision (e.g. you said the same line two genuinely different ways).
 
+Repository: <https://github.com/ronaldtsecf/reel-auto-cut>
+
 ## 📋 What you need to prepare
 
 **Must-have (won't run without these):**
 - A computer (Mac / Windows / Linux) + knowing how to open a "Terminal" (Mac) or "PowerShell" (Windows) — don't know how? Ask the AI to walk you through it step by step.
 - `Python` and `ffmpeg` (two free tools, for processing video and running the scripts) — SETUP shows you how, or ask the AI to install them for you.
-- A **free Gemini key** (create one at [Google AI Studio](https://aistudio.google.com/apikey) — no payment, no credit card).
 
 **Optional (nice to have):**
+- A **Gemini API key** (create one at [Google AI Studio](https://aistudio.google.com/apikey)) → enables repeat detection by ear, subtitle cleanup, and B-roll matching. Basic editing, punch-ins, HDR handling, proof, and final QC still work without one. A limited Free Tier is available for supported models, subject to the [current billing terms](https://ai.google.dev/gemini-api/docs/billing).
 - An Apple Silicon Mac (M1 and later) → automatically uses `mlx` acceleration, much faster; without it you run `faster-whisper`, slightly slower but works just the same.
 - A folder of your own B-roll footage (clips you shot yourself, screen recordings, demo footage, etc.) → only needed if you want the AI to auto-match B-roll; skip it and everything else still runs.
 
-> 🤖 **Why is the Gemini key required?** `whisper` (the transcriber) has a blind spot: when you NG and re-record the same line, it often treats it as if you only said it once and misses the repeat. `Gemini` actually **listens to the audio** and catches all those repeat takes — this is the soul of the whole kit. Without it, this degrades into a plain silence-trimmer, of which there are plenty of free apps; not worth using this kit for that. So this key is non-negotiable (but it's free).
+> 🤖 **What does the Gemini key add?** `whisper` (the transcriber) has a blind spot: when you NG and re-record the same line, it often treats it as if you only said it once. `Gemini` listens for those missed repeats, cleans subtitles, and understands B-roll content. Without a key the tool enters basic mode and clearly skips those three features.
 
 ## 🌐 No Claude Code? OpenAI Codex works too
 
@@ -86,9 +96,13 @@ Hand the whole repo (or the repo link) to Claude / OpenAI Codex and say:
 - **Cantonese only** (transcription is set to `yue`). Other languages require forking, not configuring.
 - **Best-tested on Mac** (the developer's primary platform). Windows / Linux have cross-platform engine + encoder support and should work in theory, but aren't yet fully tested on real hardware — treat them as experimental, and please open an issue if you hit problems.
 - Mac runs `mlx` fastest; Windows / Linux run `faster-whisper` — without a GPU, a few-minute clip can take a few minutes to process, so be a little patient.
+- AI output still needs one human watch plus a scrub of `rejects_preview.mp4` before posting. Silence detection reports possible gaps but does not silently move edit boundaries.
+- HDR conversion requires FFmpeg `zscale` and `tonemap`; `python scripts/preflight.py --strict` checks this up front.
 
 ## License
 
 [MIT](LICENSE) — use, modify, and sell it freely; just credit the source.
 
 Cantonese version: [README.md](README.md). Find it useful? Drop a star ⭐
+
+Release notes: [CHANGELOG.md](CHANGELOG.md)

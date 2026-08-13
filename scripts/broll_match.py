@@ -29,6 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from kit_config import CONFIG
+from gemini_key import resolve_gemini_key
 
 MODEL = "gemini-2.5-flash"
 MIN_GAP = 2.0
@@ -268,9 +269,9 @@ def main() -> int:
             return 1
         model = "mock"
     else:
-        api_key = os.environ.get("GOOGLE_AI_API_KEY")
+        api_key, _key_env = resolve_gemini_key()
         if not api_key:
-            print("ERROR: 冇 GOOGLE_AI_API_KEY，B-roll 自動配對要 Gemini 先做到。", file=sys.stderr)
+            print("ERROR: 冇 GEMINI_API_KEY／GOOGLE_API_KEY，B-roll 自動配對要 Gemini 先做到。", file=sys.stderr)
             return 2
         try:
             from google import genai

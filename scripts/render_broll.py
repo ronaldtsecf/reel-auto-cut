@@ -16,6 +16,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from visual_preflight import (
+    VisualPreflightError,
+    build_source_visual_preflight,
+    probe_source_color,
+)
+
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
@@ -36,6 +44,57 @@ def probe(path: Path) -> dict:
                 "duration": float(data.get("format", {}).get("duration") or 0)}
     except (KeyError, IndexError, TypeError, ValueError, ZeroDivisionError, json.JSONDecodeError):
         raise RuntimeError(f"讀唔到片嘅資料: {path.name}")
+
+
+def visual_route(path: Path) -> dict:
+    try:
+        report = build_source_visual_preflight(probe_source_color(path))
+    except VisualPreflightError as exc:
+        raise RuntimeError(f"{path.name} 色彩 preflight FAIL：{exc}") from exc
+    return {
+        "classification": report["source_color"]["classification"],
+        "filter": report["effective_color_filter"],
+        "tone_map_stage_count": report["tone_map_stage_count"],
+        "warnings": report.get("warnings", []),
+    }
+
+
+def probe_output(path: Path) -> dict:
+    r = run([
+        "ffprobe", "-v", "error", "-show_entries",
+        "stream=codec_type,width,height,avg_frame_rate,pix_fmt,color_space,color_transfer,color_primaries",
+        "-of", "json", str(path),
+    ])
+    try:
+        streams = json.loads(r.stdout)["streams"]
+        video = next(stream for stream in streams if stream.get("codec_type") == "video")
+        num, den = str(video.get("avg_frame_rate", "0/1")).split("/", 1)
+        return {
+            "width": int(video["width"]), "height": int(video["height"]),
+            "fps": float(num) / float(den), "pix_fmt": video.get("pix_fmt"),
+            "color_space": video.get("color_space"),
+            "color_transfer": video.get("color_transfer"),
+            "color_primaries": video.get("color_primaries"),
+            "audio_streams": sum(stream.get("codec_type") == "audio" for stream in streams),
+        }
+    except (KeyError, StopIteration, TypeError, ValueError, ZeroDivisionError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"讀唔到 B-roll output 規格: {path.name}") from exc
+
+
+def output_failures(actual: dict, main: dict) -> list[str]:
+    failures = []
+    if (actual["width"], actual["height"]) != (main["width"], main["height"]):
+        failures.append(f"size={actual['width']}x{actual['height']}")
+    if abs(actual["fps"] - main["fps"]) > 0.01:
+        failures.append(f"fps={actual['fps']}")
+    if actual.get("pix_fmt") != "yuv420p":
+        failures.append(f"pix_fmt={actual.get('pix_fmt')}")
+    for field in ("color_space", "color_transfer", "color_primaries"):
+        if actual.get(field) != "bt709":
+            failures.append(f"{field}={actual.get(field)}")
+    if actual.get("audio_streams") != 1:
+        failures.append(f"audio_streams={actual.get('audio_streams')}")
+    return failures
 
 
 def pick_vcodec() -> list[str]:
@@ -80,6 +139,7 @@ def main() -> int:
         plan = json.loads(plan_path.read_text(encoding="utf-8"))
         slots = plan["slots"]
         main = probe(rough)
+        main_visual = visual_route(rough)
     except (OSError, KeyError, TypeError, json.JSONDecodeError, RuntimeError) as exc:
         print(f"ERROR: plan 或 rough cut 讀唔到: {exc}", file=sys.stderr)
         return 1
@@ -105,6 +165,11 @@ def main() -> int:
             print(f"ERROR: slot {i} 搵唔到素材: {file}", file=sys.stderr)
             return 1
         is_image = media.suffix.lower() in IMAGE_EXTS
+        try:
+            route = visual_route(media)
+        except RuntimeError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
         if not is_image:
             try:
                 broll_duration = probe(media)["duration"]
@@ -119,15 +184,40 @@ def main() -> int:
             print(f"slot {i}: 裁完冇有效長度，跳過。")
             continue
         prepared.append({"start": start, "end": end, "path": media,
-                         "image": is_image, "input": len(prepared) + 1})
+                         "image": is_image, "input": len(prepared) + 1,
+                         "visual": route,
+                         "plan_file": file.name if file.is_absolute() else str(file)})
 
     out.parent.mkdir(parents=True, exist_ok=True)
+    qc_path = out.with_name(f"{out.stem}_qc.json")
+    out.unlink(missing_ok=True)
+    qc_path.unlink(missing_ok=True)
+    main_prefix = f"{main_visual['filter']}," if main_visual["filter"] else ""
+    bt709 = "setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv"
     if not prepared:
-        r = run(["ffmpeg", "-y", "-v", "error", "-i", str(rough),
-                 "-map", "0", "-c", "copy", str(out)])
+        vcodec = pick_vcodec()
+        def no_slot_cmd(codec: list[str]) -> list[str]:
+            return ["ffmpeg", "-y", "-v", "error", "-i", str(rough),
+                    "-vf", f"{main_prefix}fps={main['fps']:.6f},format=yuv420p,{bt709}",
+                    "-map", "0:v:0", "-map", "0:a?", *codec,
+                    "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+                    "-c:a", "copy", "-movflags", "+faststart", str(out)]
+        r = run(no_slot_cmd(vcodec))
+        if r.returncode != 0 and any("videotoolbox" in arg for arg in vcodec):
+            r = run(no_slot_cmd(["-c:v", "libx264", "-preset", "medium", "-crf", "18",
+                                 "-pix_fmt", "yuv420p"]))
         if r.returncode != 0:
             print(f"ERROR: 複製 rough cut 失敗:\n{r.stderr[-600:]}", file=sys.stderr)
             return 1
+        actual = probe_output(out)
+        failures = output_failures(actual, main)
+        if failures:
+            out.unlink(missing_ok=True)
+            print("ERROR: B-roll output 規格唔合格：" + "；".join(failures), file=sys.stderr)
+            return 2
+        qc_path.write_text(json.dumps({
+            "status": "pass", "main_source": main_visual, "slots": [], "actual": actual,
+        }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"plan 冇有效 slot，原片照抄到 {out}")
         return 0
 
@@ -143,24 +233,25 @@ def main() -> int:
             inputs += ["-i", str(slot["path"])]
 
     width, height = main["width"], main["height"]
-    filters = [f"[0:v]fps={fps_text},format=yuv420p,setpts=PTS-STARTPTS[base0]"]
+    filters = [f"[0:v]{main_prefix}fps={fps_text},format=yuv420p,{bt709},setpts=PTS-STARTPTS[base0]"]
     last = "base0"
     for i, slot in enumerate(prepared, 1):
         start, end = slot["start"], slot["end"]
         duration = end - start
         cover = (f"scale={width}:{height}:force_original_aspect_ratio=increase,"
                  f"crop={width}:{height},setsar=1")
+        color_prefix = f"{slot['visual']['filter']}," if slot["visual"]["filter"] else ""
         if slot["image"]:
             step = 0.06 / max(1.0, duration * fps)
-            source = (f"[{slot['input']}:v]{cover},"
+            source = (f"[{slot['input']}:v]{color_prefix}{cover},"
                       f"zoompan=z='min(1.0+on*{step:.9f},1.06)':"
                       f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:"
                       f"s={width}x{height}:fps={fps_text},trim=duration={duration:.3f},"
-                      f"setpts=PTS-STARTPTS+{start:.3f}/TB[br{i}]")
+                      f"{bt709},setpts=PTS-STARTPTS+{start:.3f}/TB[br{i}]")
         else:
             source = (f"[{slot['input']}:v]trim=start=0:duration={duration:.3f},"
-                      f"setpts=PTS-STARTPTS,{cover},fps={fps_text},"
-                      f"setpts=PTS+{start:.3f}/TB[br{i}]")
+                      f"setpts=PTS-STARTPTS,{color_prefix}{cover},fps={fps_text},"
+                      f"format=yuv420p,{bt709},setpts=PTS+{start:.3f}/TB[br{i}]")
         filters.append(source)
         filters.append(f"[{last}][br{i}]overlay=enable='between(t,{start:.3f},{end:.3f})':"
                        f"eof_action=pass:repeatlast=0[base{i}]")
@@ -170,6 +261,7 @@ def main() -> int:
         return ["ffmpeg", "-y", "-v", "error", *inputs,
                 "-filter_complex", ";".join(filters),
                 "-map", f"[{last}]", "-map", "0:a?", *vcodec,
+                "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
                 "-c:a", "copy", "-t", f"{main['duration']:.3f}",
                 "-movflags", "+faststart", str(out)]
 
@@ -181,9 +273,33 @@ def main() -> int:
                     "-pix_fmt", "yuv420p"]
         r = run(render_cmd(fallback))
     if r.returncode != 0:
+        out.unlink(missing_ok=True)
         print(f"ERROR: 疊 B-roll 失敗:\n{r.stderr[-1000:]}", file=sys.stderr)
         return 1
+    try:
+        actual = probe_output(out)
+    except RuntimeError as exc:
+        out.unlink(missing_ok=True)
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    failures = output_failures(actual, main)
+    if failures:
+        out.unlink(missing_ok=True)
+        print("ERROR: B-roll output 規格唔合格：" + "；".join(failures), file=sys.stderr)
+        return 2
+    qc_path.write_text(json.dumps({
+        "status": "pass",
+        "main_source": main_visual,
+        "slots": [{
+            "file": slot["plan_file"],
+            "classification": slot["visual"]["classification"],
+            "tone_map_stage_count": slot["visual"]["tone_map_stage_count"],
+            "warnings": slot["visual"]["warnings"],
+        } for slot in prepared],
+        "actual": actual,
+    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"疊好 {len(prepared)} 段 B-roll → {out}")
+    print(f"QC PASS: {qc_path.name}")
     print("主片聲軌冇郁，字幕可以而家先燒上去。")
     return 0
 

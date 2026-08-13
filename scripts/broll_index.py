@@ -6,24 +6,27 @@ Usage:
 
 輸出 schema：
     {"version": 1, "model": "...", "items": [
-      {"file": "clip.mp4", "size": 123, "mtime": 1234567890.0,
+      {"file": "clip.mp4", "sha256": "...",
        "description": "廣東話一句", "tags": ["..."],
        "has_small_text": false,
        "orientation": "landscape|portrait|square"}
     ]}
 
-file 永遠係相對 broll_dir 嘅檔名；cache key 係同一檔名嘅 size + mtime。
+file 永遠係相對 broll_dir 嘅檔名；cache key 係素材內容 SHA-256。
 """
 from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
-import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from gemini_key import resolve_gemini_key
 
 MODEL = "gemini-2.5-flash"
 MEDIA_EXTS = {".mp4", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp"}
@@ -44,6 +47,14 @@ PROMPT = """你會收到一張相，或者同一條 B-roll 嘅 3 張代表畫面
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True)
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(4 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def media_info(path: Path) -> tuple[int, int, float]:
@@ -157,9 +168,9 @@ def main() -> int:
     if not broll_dir.is_dir():
         print(f"ERROR: 搵唔到 B-roll 資料夾: {broll_dir}", file=sys.stderr)
         return 1
-    api_key = os.environ.get("GOOGLE_AI_API_KEY")
+    api_key, _key_env = resolve_gemini_key()
     if not api_key:
-        print("ERROR: 冇 GOOGLE_AI_API_KEY，B-roll 視覺索引要 Gemini 先做到。", file=sys.stderr)
+        print("ERROR: 冇 GEMINI_API_KEY／GOOGLE_API_KEY，B-roll 視覺索引要 Gemini 先做到。", file=sys.stderr)
         return 2
     out = Path(args.out).expanduser().resolve() if args.out else broll_dir / "broll_index.json"
     media = sorted((p for p in broll_dir.iterdir()
@@ -187,9 +198,9 @@ def main() -> int:
     items = []
     for i, path in enumerate(media, 1):
         stat = path.stat()
+        digest = sha256(path)
         old = cached.get(path.name)
-        if (old and old.get("size") == stat.st_size
-                and old.get("mtime") == stat.st_mtime and not args.force):
+        if old and old.get("sha256") == digest and not args.force:
             print(f"[{i}/{len(media)}] cache ✓ {path.name}")
             items.append(old)
             continue
@@ -199,7 +210,8 @@ def main() -> int:
         except Exception as exc:
             print(f"ERROR: {path.name} 索引失敗: {exc}", file=sys.stderr)
             return 1
-        items.append({"file": path.name, "size": stat.st_size, "mtime": stat.st_mtime,
+        items.append({"file": path.name, "sha256": digest,
+                      "size": stat.st_size, "mtime": stat.st_mtime,
                       **result})
 
     out.parent.mkdir(parents=True, exist_ok=True)

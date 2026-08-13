@@ -60,7 +60,7 @@ macOS 內建嘅 `python3` 好多時仲係 3.9.6，唔會自動 update。SETUP St
 你跑咗 `--ship`（出最終成品嗰個指令）出成品，但燒入去嘅字幕字體唔對路 —— 變成怪怪哋嘅 fallback（搵唔到正字款時自動補返嘅替代字款），或者根本見唔到中文字。
 
 **點解會咁**
-字幕係用一隻指定嘅字體去燒。**冇喺 `config.json`（放你個人設定嘅檔案）揀字體**嘅時候，程式 default 揀 `Hiragino Sans GB`（蘋果系統先有嘅字款）。Windows 冇隻字，搵唔到就會跌返去個亂嚟嘅替代字。
+字幕係用一隻指定嘅字體去燒。新 default 係 Mac `PingFang TC`、Windows `Microsoft JhengHei`、Linux `Noto Sans CJK TC`；如果系統冇嗰隻字，就會跌去 fallback。
 
 **點搞掂**
 喺 `config.json`（冇就 `cp config.example.json config.json` 複製一份範本）寫返一隻**你部機真係有**嘅中文字體，例如 Windows 內建嘅微軟雅黑：
@@ -68,7 +68,7 @@ macOS 內建嘅 `python3` 好多時仲係 3.9.6，唔會自動 update。SETUP St
 ```json
 {
   "brand": {
-    "subtitle_font": "Microsoft YaHei"
+  "subtitle_font": "Microsoft JhengHei"
   }
 }
 ```
@@ -94,7 +94,7 @@ Gemini（Google 出嘅 AI，喺呢個 kit 負責用耳仔聽返條片捉重複 t
 
 **點搞掂**
 
-- **等一陣再跑。** Free tier 限額係滾動式，per-minute 嗰個通常等一兩分鐘就回滿；per-day 嗰個要等到香港時間第二日先 reset。沖返杯嘢飲再 retry。
+- **等限額窗口重置再跑。** 實際恢復時間、每日配額同你個 model／tier 有關，以 Google AI Studio 顯示為準。
 - **慢啲跑、唔好連發。** 唔好一次過 batch（一次跑一大堆）幾條片落去。一條搞掂、隔陣先落下一條。
 - **撞咗喺邊步，淨重跑嗰步就得。** 例如字幕清潔 fail，唔使由 transcribe 重頭嚟（transcribe 有 cache —— 記低咗上次結果嘅暫存，本身唔會重跑，但都係嘥時間）。直接 `bash reel_finish.sh <work_dir>`（打包成品嗰個指令）再行一次，前面 cache 過嘅唔會重做。
 - 真係成日撞 → 喺 [Google AI Studio](https://aistudio.google.com/apikey) 入面睇返你個 key（一條開啟 Gemini 嘅密碼匙）嘅 quota / rate limit 現況，或者升上付費 tier（唔逼你，free 一般夠玩）。
@@ -122,40 +122,79 @@ iPhone 開咗「空間音訊（spatial audio）」錄出嚟嘅片，入面有條
 你 trim 過（剪過）/ 換過條 raw 片（未剪嘅原片），但再跑 transcribe 見到 `cache hit`（中咗暫存），出返嘅字同舊版一模一樣，似冇食你新片。
 
 **點解會咁**
-transcribe 有 cache：佢用**檔案路徑 + 大小 + 修改時間（mtime）**砌個指紋（一條代表呢個檔案版本嘅獨有編碼）。指紋冇變就當你冇換片，直接攞返舊 transcript 慳時間。如果你係喺**完全唔郁原檔**嘅情況下「以為換咗片」（例如其實改咗 work_dir 入面另一個檔、或者只係 rename），原 raw 片個指紋冇變，所以照中 cache。
+v0.2 起 cache 只認原片**內容 SHA-256**（逐 byte 指紋），唔再靠路徑、大小或修改時間；同 size／同 mtime 都冒認唔到。如果仲見到舊稿，通常係你跑緊另一個 out-dir，或者仲用緊 v0.1 舊 code。
 
 **點搞掂**
 
-- **正路：真係改咗原檔，mtime 自動變,就會自動重跑。** 你 re-export / 覆寫 / 重新導入條 raw 片之後，mtime 一定唔同,下次跑會自動 re-transcribe（連帶 `audio.wav`（抽出嚟嗰條聲音檔）都會重抽，唔會用舊嘅）。
-- **想硬逼佢重跑：刪走 cache 檔。** 入去對應 out-dir（輸出資料夾，例如 `<work_dir>/final_stt/`）`rm transcript.json`（刪走嗰個暫存檔），再跑就會由頭嚟。
+- **先更新 kit：** `git pull --ff-only`，再跑 `python scripts/preflight.py`。v0.1 嘅 `source_key` receipt 唔會冒認 v0.2 content hash，第一次會自動重聽寫。
+- **核對 out-dir：** `transcript.json` 同 `audio.wav` 必須喺同一個 out-dir，而且兩件都在先會 cache hit。
+- **想硬逼佢重跑：** 刪走對應 out-dir 嘅 `transcript.json` 同 `audio.wav` 再跑。刪之前核清楚 path，唔好喺 repo 根亂刪。
 - 確認你跑緊嗰條片路徑，係咪真係指住你改完嗰個檔（唔好改咗 A 檔但 pipeline 指住 B 檔）。
 
 ---
 
-## 🚀 6. 冇配 Gemini key，出嚟啲嘢好弱
+## 🚀 6. 冇配 Gemini key，而家行緊 basic mode
 
 **你見到咩**
-terminal 出現 `冇 GOOGLE_AI_API_KEY → 用 DRAFT（字幕未清潔；配 free key 叻好多）`、或者 `skip self-eval（缺 key …）`。出嚟嘅字幕又多錯別字又斷句怪、重複 take 又冇剷乾淨。
+terminal 出現 `冇 Gemini API key → 用 DRAFT（字幕未清潔；配 key 叻好多）`、或者 `skip self-eval（缺 key …）`。出嚟嘅字幕又多錯別字又斷句怪、重複 take 又冇剷乾淨。
 
 **點解會咁**
-**Gemini 係呢套嘢嘅靈魂，唔係 optional（可有可無）。** 兩樣關鍵工序冇佢做唔到：
+**Gemini 係 optional AI 增強。** 基本剪片、punch、HDR、proof 同 final QC 照行；以下工序就需要 key：
 1. **捉漏網重複 take** —— whisper（聽寫工具）會自動「平滑化」，把結巴、重讀、false start（讀到一半重講）執走，淨靠 whisper 出嚟嘅稿會漏剪。要 Gemini **用耳仔聽返 raw audio** 先捉得返。AI agent（你個 AI 助手）本身冇耳（讀唔到聲），呢樣冇得代替。
 2. **字幕清潔** —— audio-first（以把聲為準）對返把聲逐句執正啲字，廣東話口語先唔會變鬼五馬六。
+3. **B-roll 自動配對** —— Gemini 要先睇明素材同字幕，先可以揀啱片段同時間位。
 
-冇 key 嘅時候 pipeline 唔會死，但會 **degraded（降級，出嚟質素打折）**：字幕只係 whisper 原始 draft（未清潔嘅初稿），self-eval 都 skip 埋。**我哋唔推薦咁用。**
+冇 key 嘅時候 pipeline 會行 **basic mode**：字幕只係 whisper 原始 draft（未清潔嘅初稿），self-eval 同 B-roll 自動配對會 skip；terminal 會明講，唔會扮做咗。
 
-**點搞掂 —— 去配返個 free key（唔使綁卡）**
+**想開返以上 AI 增強功能 —— 配 Gemini API key**
 
-1. 去 [Google AI Studio](https://aistudio.google.com/apikey) 用 Google account 撳「Create API key」，free tier，**唔使填信用卡**。
+1. 去 [Google AI Studio](https://aistudio.google.com/apikey) 用 Google account 撳「Create API key」。部分 model 有有限額 Free Tier；實際條件見 [官方 billing 頁](https://ai.google.dev/gemini-api/docs/billing)。
 2. 設做環境變數：
    ```bash
    # Mac / Linux
-   export GOOGLE_AI_API_KEY="你個 key"
+   export GEMINI_API_KEY="你個 key"
 
    # Windows PowerShell
-   $env:GOOGLE_AI_API_KEY = "你個 key"
-   ```
+   $env:GEMINI_API_KEY = "你個 key"
+```
+   新安裝用 `GEMINI_API_KEY`（或 `GOOGLE_API_KEY`）；舊 `GOOGLE_AI_API_KEY` 暫時仍兼容。官方最新 key 名稱同 2026 年 9 月過渡安排見 [API key 指引](https://ai.google.dev/gemini-api/docs/api-key)。
    想一勞永逸唔使次次設 → 寫入去 shell 設定檔（開 terminal 時自動讀嘅設定檔；Mac/Linux `~/.zshrc` 或 `~/.bashrc`；Windows 用系統環境變數設定）。
 3. 設完重新 `bash reel_finish.sh <work_dir>` 跑一次,前面 cache 過嘅唔會重做,淨係補返 Gemini 嗰幾步。
 
 > 撞到 free tier 限額？睇返上面**第 3 條**。
+
+---
+
+## 🌈 7. iPhone HDR 片變灰／膚色淡
+
+**你見到咩**
+原片喺 iPhone 睇正常，但 rough cut 或 final 變灰、對比低、膚色蒼白。
+
+**點解會咁**
+舊版會將 HLG／PQ HDR 像素當普通 SDR 讀。v0.2 起會先讀 `color_transfer`／`color_primaries`／`color_space`／bit depth：明確 HLG/PQ 先轉一次 BT.709；矛盾嘅高風險 metadata 直接停，唔估。
+
+**點搞掂**
+
+1. `git pull --ff-only` 更新。
+2. 跑 `python scripts/preflight.py --strict`，確認 `zscale`／`tonemap` 齊。
+3. 重跑 `proof_check.sh` 同 `reel_finish.sh`；舊 proof 會因 source／EDL receipt 對唔上而失效。
+4. 睇 `qc.json`：`tone_map_applied` 應該係 `true`、`tone_map_stage_count` 應該係 `1`。最後仍要抽 2–3 格人眼睇膚色。
+
+---
+
+## 🔒 8. `PROOF FAIL`／話 EDL 或原片改過
+
+**你見到咩**
+`reel_finish.sh` 開頭停低，叫你重跑 `proof_check.sh`。
+
+**點解會咁**
+`proof_pass.json` 綁住 exact EDL、原片、proof audio 同 proof 聽寫。你改咗任何一件，舊綠燈都唔再代表今版。
+
+**點搞掂**
+
+```bash
+bash proof_check.sh <work_dir>
+bash reel_finish.sh <work_dir> --ship
+```
+
+唔好手改 `proof_pass.json`；重跑 proof 先係真正驗過新刀位。
